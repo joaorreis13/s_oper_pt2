@@ -10,8 +10,13 @@
 #include <fcntl.h>
 #include <time.h>
 
-//Funcao que inicializa o server
-int startserver(char *seats, char *n_tick_off, char *open_time){
+//Defines
+
+#define MAX_ROOM_SEATS = 140
+#define MAX_CLI_SEATS = 100
+#define WIDTH_SEAT = 4 
+//Function that initializes the server
+int startserver(char *num_room_seats, char *num_ticket_offices, char *open_time){
 
 
 }
