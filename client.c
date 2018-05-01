@@ -47,6 +47,8 @@ int create_fifo_request_write()
 	return 0;
 }
 
+//FIFO that receives the answer to the client
+
 int create_fifo_resposta_read()
 {
 	int fd;
@@ -70,7 +72,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	unsigned int time_out,num_wanted_seats;
+	unsigned int time_out, num_wanted_seats;
 	char pref_seat_list[30];
 
 	if (time_out > MAX_TIME_OUT)
@@ -78,7 +80,6 @@ int main(int argc, char *argv[])
 
 	if (num_wanted_seats > MAX_SEATS)
 		printf("Too much wanted seats\n");
-
 
 	return 0;
 }

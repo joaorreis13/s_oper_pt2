@@ -56,9 +56,10 @@ int create_fifo_request_read()
 	return 0;
 }
 
+//FIFO that sends the answer to the client
+
 int create_fifo_resposta_write()
 {
-	//FIFO deve ter o nome ansXXXXX, em que XXXXX representa o PID do cliente (TO-DO)
 	int fd;
 	char *resposta = "/tmp/resposta";
 
