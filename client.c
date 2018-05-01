@@ -9,9 +9,10 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <time.h>
+#include <stdbool.h>
 
-#define WIDTH_SEAT = 4
-#define WIDTH_PID = 5
+#define WIDTH_SEAT 4
+#define WIDTH_PID 5
 
 //TO-DOS
 
