@@ -23,6 +23,7 @@ apoos uma tentativa de reserva sem sucesso,
 em que foram pre-reservados alguns lugares mas nao 
 foi possivel reservar todos os lugares pretendidos.*/
 //Escrita em slog.txt
+//escrita em sbook.txt
 
 //Defines
 
