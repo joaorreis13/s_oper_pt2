@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 //TO-DOS
 
@@ -23,7 +24,7 @@ apoos uma tentativa de reserva sem sucesso,
 em que foram pre-reservados alguns lugares mas nao 
 foi possivel reservar todos os lugares pretendidos.*/
 //Escrita em slog.txt (tem que ser aberto na main thread, usar fprintf e fread)
-//escrita em sbook.txt
+//escrita em sbook.txt (tem que ser aberto na main thread, usar fprintf e fread)
 //Criar funcao que controla o tempo que o server esta "online"
 //return de execcao ao cliente se parametros de pedido forem invalidos
 //estrutura de semaforos
@@ -64,24 +65,25 @@ int main(int argc, const char *argv[])
 		return 0;
 	}
 
-	unsigned int num_room_seats,num_ticket_office,open_time;
+	unsigned int num_room_seats, num_ticket_office, open_time;
 
-	if(sscanf(argv[1],"%u",&num_room_seats)<1 ||sscanf(argv[2],"%u",&num_ticket_office) < 1 || sscanf(argv[3],"%u",&open_time)<1){
+	if (sscanf(argv[1], "%u", &num_room_seats) < 1 || sscanf(argv[2], "%u", &num_ticket_office) < 1 || sscanf(argv[3], "%u", &open_time) < 1)
+	{
 		printf("Invalid input\n");
 		return -1;
 	}
-		if(num_room_seats>MAX_ROOM_SEATS)
+	if (num_room_seats > MAX_ROOM_SEATS)
 		printf("More seats than expected\n");
 
-		if(num_ticket_office>MAX_TICKET_OFFICES)
+	if (num_ticket_office > MAX_TICKET_OFFICES)
 		printf("More ticket offices than expected\n");
 
-		if(open_time>MAX_OPEN_TIME)
+	if (open_time > MAX_OPEN_TIME)
 		printf("Open time over the expected");
 
 	//inicializar sala
-	// bool lugar[];
-	// pthread_mutex_t mut[];
+	bool lugar[num_room_seats];
+	pthread_mutex_t mut[num_room_seats];
 
 	return 0;
 }

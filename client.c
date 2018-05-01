@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #define WIDTH_SEAT 4
 #define WIDTH_PID 5
