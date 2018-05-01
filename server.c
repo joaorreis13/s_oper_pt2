@@ -57,7 +57,7 @@ int create_fifo_request_read()
 	return 0;
 }
 
-int main(int agrc, char *argv[])
+int main(int argc,const char *argv[])
 {
 
 	startserver(argv[1], argv[2], argv[3]);

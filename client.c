@@ -44,7 +44,7 @@ int create_fifo_request_write()
 	return 0;
 }
 
-int main(int agrc, char *argv[])
+int main(int argc, char *argv[])
 {
 
 	client_init(argv[1], argv[2], argv[3]);
