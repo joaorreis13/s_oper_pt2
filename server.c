@@ -56,6 +56,26 @@ int create_fifo_request_read()
 	return 0;
 }
 
+int create_fifo_resposta_write()
+{
+	//FIFO deve ter o nome ansXXXXX, em que XXXXX representa o PID do cliente (TO-DO)
+	int fd;
+	char *resposta = "/tmp/resposta";
+
+	// create the FIFO (named pipe)
+	mkfifo(resposta, 0666);
+
+	// Write something to fifo
+	fd = open(resposta, O_WRONLY);
+	write(fd, "Hi", sizeof("Hi"));
+	close(fd);
+
+	// remove the FIFO
+	unlink(resposta);
+
+	return 0;
+}
+
 int main(int argc, const char *argv[])
 {
 	//to-do verificar args

@@ -16,7 +16,7 @@
 #define WIDTH_PID 5
 #define MAX_TIME_OUT 20
 #define MAX_SEATS 10
-
+#define MAX_BUF 1024
 //TO-DOS
 
 //escrita em clog.txt
@@ -43,6 +43,21 @@ int create_fifo_request_write()
 
 	// remove the FIFO
 	unlink(request);
+
+	return 0;
+}
+
+int create_fifo_resposta_read()
+{
+	int fd;
+	char *resposta = "/tmp/resposta";
+	char buf[MAX_BUF];
+
+	// open, read, and display the message from the FIFO
+	fd = open(resposta, O_RDONLY);
+	read(fd, buf, MAX_BUF);
+	printf("Received: %s\n", buf);
+	close(fd);
 
 	return 0;
 }
