@@ -14,20 +14,21 @@
 
 #define WIDTH_SEAT 4
 #define WIDTH_PID 5
+#define MAX_TIME_OUT 20
+#define MAX_SEATS 10
 
 //TO-DOS
 
 //escrita em clog.txt
 //escrita em cbook.txt
- 
+
 //Function that initializes the client
 int client_init(char *time_out, char *num_wanted_seats, char *pref_seat_list)
 {
-
 }
 //FIFO que recebe os pedidos de reserva de lugar
 int create_fifo_request_write()
-{	
+{
 	//FIFO deve ter o nome ansXXXXX, em que XXXXX representa o PID do cliente (TO-DO)
 	int fd;
 	char *request = "/tmp/request";
@@ -48,8 +49,21 @@ int create_fifo_request_write()
 
 int main(int argc, char *argv[])
 {
+	if (argc < 4)
+	{
+		printf("Use: %s <time_out> <num_wanted_seats> <pref_seat_list>\n", *argv);
+		return 0;
+	}
 
-	client_init(argv[1], argv[2], argv[3]);
+	unsigned int time_out,num_wanted_seats;
+	char pref_seat_list[30];
+
+	if (time_out > MAX_TIME_OUT)
+		printf("Timeout too big\n");
+
+	if (num_wanted_seats > MAX_SEATS)
+		printf("Too much wanted seats\n");
+
 
 	return 0;
 }
