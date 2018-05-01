@@ -24,6 +24,9 @@ em que foram pre-reservados alguns lugares mas nao
 foi possivel reservar todos os lugares pretendidos.*/
 //Escrita em slog.txt
 //escrita em sbook.txt
+//Criar funcao que controla o tempo que o server esta "online"
+//return de execcao ao cliente se parametros de pedido forem invalidos
+//estrutura de semaforos
 
 //Defines
 
