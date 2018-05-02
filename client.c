@@ -59,7 +59,7 @@ int create_fifo_resposta_read()
 	fd = open(resposta, O_RDONLY);
 	read(fd, buf, MAX_BUF);
 	printf("Received: %s\n", buf);
-	close(fd);
+	close(fd);//suposto fechar aqui????
 
 	return 0;
 }

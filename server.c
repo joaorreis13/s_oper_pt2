@@ -51,7 +51,7 @@ int create_fifo_request_read()
 	fd = open(request, O_RDONLY);
 	read(fd, buf, MAX_BUF);
 	printf("Received: %s\n", buf);
-	close(fd);
+	close(fd); //suposto fechar aqui????
 
 	return 0;
 }
