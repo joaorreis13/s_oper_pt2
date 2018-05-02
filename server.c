@@ -40,9 +40,17 @@ para não haver necessidade de ir ao ficheiro txt*/
 #define MAX_TICKET_OFFICES 5
 #define MAX_OPEN_TIME 1000
 
+
+int main_thread()
+{
+	return 0;
+}
+
+
 //Function that creates bilheteira threads
 int threads_bilheteira()
 {
+	return 0;
 }
 
 //FIFO that receives the seat reservation requests
