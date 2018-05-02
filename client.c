@@ -14,7 +14,7 @@
 
 #define WIDTH_SEAT 4
 #define WIDTH_PID 5
-#define MAX_TIME_OUT 20
+#define MAX_TIME_OUT 100
 #define MAX_SEATS 99
 #define MAX_BUF 1024
 //TO-DOS
@@ -26,6 +26,7 @@
 //Function that initializes the client
 int client_init(char *time_out, char *num_wanted_seats, char *pref_seat_list)
 {
+	return 0;
 }
 //FIFO that sends the seat reservation requests
 int create_fifo_request_write()
@@ -65,17 +66,27 @@ int create_fifo_resposta_read()
 	return 0;
 }
 
+//Space count of the argv[4]
+int chrcount(const char *str, char chr)
+{
+	if (!str)
+		return -1;
+	int cnt = 0;
+	for (const char *p = str; *p; ++p)
+		if (*p == chr)
+			++cnt;
+	return cnt;
+}
+
 int main(int argc, char *argv[])
 {
+	unsigned int time_out, num_wanted_seats,*pref_seat_list;
+
 	if (argc < 4)
 	{
 		printf("Use: %s <time_out> <num_wanted_seats> <pref_seat_list>\n", *argv);
 		return 0;
 	}
-
-	unsigned int time_out, num_wanted_seats;
-	unsigned int seat_counter=argc-3;
-	int pref_seat_list[seat_counter];
 
 	if (sscanf(argv[1], "%u", &time_out) < 1 || sscanf(argv[2], "%u", &num_wanted_seats) < 1)
 	{
@@ -83,30 +94,45 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	if(seat_counter<num_wanted_seats){
+	/*if(seat_counter<num_wanted_seats){
 		printf("Not enough seats specified\n");
 		return -1;
-	 }
+	 }*/
 
 	if (time_out > MAX_TIME_OUT)
+	{
 		printf("Timeout too big\n");
+		return -1;
+	}
 
-
-	if (num_wanted_seats > MAX_SEATS || num_wanted_seats < 1){
+	if (num_wanted_seats > MAX_SEATS || num_wanted_seats < 1)
+	{
 		printf("Too much wanted seats\n");
 		return -1;
 	}
-
-	char* p;
-	errno = 0;
-	for(unsigned int i=0;i<seat_counter;i++){
-		pref_seat_list[i] = strtol(argv[i+3], &p, 10);
-		//testa se é integer
-		if (*p != '\0' || errno != 0){
-			printf("Preaferable seats must be integers\n");
-			return -1;
-		}
+	int aux=chrcount(argv[3],' ')+1;
+	pref_seat_list=malloc(aux*sizeof(unsigned));
+	
+	if(pref_seat_list==NULL){
+	perror("Malloc");
+	return -1;
 	}
+	int n_pref=0;
+	for(int i=0,cnt_aux=0;i<=aux;i++){
+		int n;
+		if(sscanf(argv[3]+cnt_aux,"%u%n",&pref_seat_list[i],&n)<1)
+		break;
+		cnt_aux+=n;
+		n_pref++;
+	}
+
+	if(n_pref<aux){
+		printf("<pref_seat_list> is WRONG! Nice try :)\n");
+		return -1;
+	}
+
+	for(int i=0;i<n_pref;i++)
+	printf("%u\n",pref_seat_list[i]);
 
 	return 0;
 }
