@@ -21,6 +21,8 @@
 
 //escrita em clog.txt
 //escrita em cbook.txt
+//criar metodo de leitura do argumento <pref_seat_list>
+
 
 //Function that initializes the client
 int client_init(char *time_out, char *num_wanted_seats, char *pref_seat_list)
