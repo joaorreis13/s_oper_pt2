@@ -43,6 +43,7 @@ para não haver necessidade de ir ao ficheiro txt*/
 
 int main_thread()
 {
+	
 	return 0;
 }
 
