@@ -15,7 +15,7 @@
 #define WIDTH_SEAT 4
 #define WIDTH_PID 5
 #define MAX_TIME_OUT 20
-#define MAX_SEATS 10
+#define MAX_SEATS 99
 #define MAX_BUF 1024
 //TO-DOS
 
@@ -74,13 +74,39 @@ int main(int argc, char *argv[])
 	}
 
 	unsigned int time_out, num_wanted_seats;
-	char pref_seat_list[30];
+	unsigned int seat_counter=argc-3;
+	int pref_seat_list[seat_counter];
+
+	if (sscanf(argv[1], "%u", &time_out) < 1 || sscanf(argv[2], "%u", &num_wanted_seats) < 1)
+	{
+		printf("Invalid input\n");
+		return -1;
+	}
+
+	if(seat_counter<num_wanted_seats){
+		printf("Not enough seats specified\n");
+		return -1;
+	 }
 
 	if (time_out > MAX_TIME_OUT)
 		printf("Timeout too big\n");
 
-	if (num_wanted_seats > MAX_SEATS)
+
+	if (num_wanted_seats > MAX_SEATS || num_wanted_seats < 1){
 		printf("Too much wanted seats\n");
+		return -1;
+	}
+
+	char* p;
+	errno = 0;
+	for(unsigned int i=0;i<seat_counter;i++){
+		pref_seat_list[i] = strtol(argv[i+3], &p, 10);
+		//testa se é integer
+		if (*p != '\0' || errno != 0){
+			printf("Preaferable seats must be integers\n");
+			return -1;
+		}
+	}
 
 	return 0;
 }

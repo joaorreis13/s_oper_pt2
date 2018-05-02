@@ -11,6 +11,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include "server.h"
 
 //TO-DOS
 
@@ -19,26 +20,19 @@
 //int isSeatFree(Seat *seats, int seatNum) – testa se o lugar seatNum esta livre
 /*void bookSeat(Seat *seats, int seatNum, int clientId) – reserva o lugar seatNum
 para o cliente cujo identificador e clientId */
-/*void freeSeat(Seat *seats, int seatNum) – liberta o lugar seatNum, 
-apoos uma tentativa de reserva sem sucesso, 
-em que foram pre-reservados alguns lugares mas nao 
+/*void freeSeat(Seat *seats, int seatNum) – liberta o lugar seatNum,
+apoos uma tentativa de reserva sem sucesso,
+em que foram pre-reservados alguns lugares mas nao
 foi possivel reservar todos os lugares pretendidos.*/
 //Escrita em slog.txt (tem que ser aberto na main thread, usar fprintf e fread)
 //escrita em sbook.txt (tem que ser aberto na main thread, usar fprintf e fread)
 //Criar funcao que controla o tempo que o server esta "online"
 //return de execcao ao cliente se parametros de pedido forem invalidos
 //estrutura de semaforos
-/*criar um array que representa a sala para marcar os lugares ocupados 
+/*criar um array que representa a sala para marcar os lugares ocupados
 para não haver necessidade de ir ao ficheiro txt*/
 
 //Defines
-
-#define MAX_ROOM_SEATS 140
-#define MAX_CLI_SEATS 100
-#define WIDTH_SEAT 4
-#define MAX_BUF 1024
-#define MAX_TICKET_OFFICES 5
-#define MAX_OPEN_TIME 1000
 
 
 int main_thread()
