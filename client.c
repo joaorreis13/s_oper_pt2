@@ -21,48 +21,10 @@
 
 //escrita em clog.txt
 //escrita em cbook.txt
-//criar metodo de leitura do argumento <pref_seat_list>
 
 //Function that initializes the client
 int client_init(char *time_out, char *num_wanted_seats, char *pref_seat_list)
 {
-	return 0;
-}
-//FIFO that sends the seat reservation requests
-int create_fifo_request_write()
-{
-	//FIFO deve ter o nome ansXXXXX, em que XXXXX representa o PID do cliente (TO-DO)
-	int fd;
-	char *request = "/tmp/request";
-
-	// create the FIFO (named pipe)
-	mkfifo(request, 0666);
-
-	// Write something to fifo
-	fd = open(request, O_WRONLY);
-	write(fd, "Hi", sizeof("Hi"));
-	close(fd);
-
-	// remove the FIFO
-	unlink(request);
-
-	return 0;
-}
-
-//FIFO that receives the answer to the client
-
-int create_fifo_resposta_read()
-{
-	int fd;
-	char *resposta = "/tmp/resposta";
-	char buf[MAX_BUF];
-
-	// open, read, and display the message from the FIFO
-	fd = open(resposta, O_RDONLY);
-	read(fd, buf, MAX_BUF);
-	printf("Received: %s\n", buf);
-	close(fd); //suposto fechar aqui????
-
 	return 0;
 }
 
