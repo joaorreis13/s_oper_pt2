@@ -1,6 +1,12 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+
+
 #define MAX_ROOM_SEATS 9999
 #define MAX_CLI_SEATS 99
 #define WIDTH_SEAT 4
@@ -9,8 +15,8 @@
 #define MAX_OPEN_TIME 1000
 
 typedef struct{
-  pid_t pid_client = 0;
-  int booked = 0; //boolean
+  pid_t pid_client;
+  int booked ; //boolean
 } Seat ;
 
 
