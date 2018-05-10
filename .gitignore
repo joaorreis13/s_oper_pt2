@@ -1,2 +1,10 @@
 .vscode/settings.json
 server
+clog.txt
+cbook.txt
+client
+sbook.txt
+slog.txt
+fifo
+bilheteira
+README.md
