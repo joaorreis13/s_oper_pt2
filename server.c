@@ -8,6 +8,27 @@
 #include <unistd.h>
 #include <errno.h>
 
+//TO-DOS
+
+//CRIAR MAIN THREAD
+//CRIAR THREADS num_ticket_offices (geradas por thread main)
+//int isSeatFree(Seat *seats, int seatNum) – testa se o lugar seatNum esta livre
+/*void bookSeat(Seat *seats, int seatNum, int clientId) – reserva o lugar seatNum
+para o cliente cujo identificador e clientId */
+/*void freeSeat(Seat *seats, int seatNum) – liberta o lugar seatNum, 
+apoos uma tentativa de reserva sem sucesso, 
+em que foram pre-reservados alguns lugares mas nao 
+foi possivel reservar todos os lugares pretendidos.*/
+//Escrita em slog.txt (tem que ser aberto na main thread, usar fprintf e fread)
+//escrita em sbook.txt (tem que ser aberto na main thread, usar fprintf e fread)
+//Criar funcao que controla o tempo que o server esta "online"
+
+//estrutura de semaforos
+/*criar um array que representa a sala para marcar os lugares ocupados 
+para não haver necessidade de ir ao ficheiro txt*/
+
+
+
 #define MAX_ROOM_SEATS			9999
 #define MAX_CLI_SEATS			99
 #define WIDTH_PID				5
