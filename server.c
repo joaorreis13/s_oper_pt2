@@ -121,6 +121,9 @@ int main(int argc, const char* argv[]) {
 		.request_buffer = requests_buffer,
 		.request_buffer_cond = &request_buffer_cond,
 	};
+ 
+	//Necessario alterar struct, alocar memoria manualmente para todas as novas structs (por thread) e libertar dentro da thread
+
 	for (int i = 0; i < num_ticket_offices; ++i) {
 		p.ticket_office_id = i;
 		if (errno = pthread_create(ticket_office_thr + i, NULL, ticket_office_func, NULL) < 0) {
