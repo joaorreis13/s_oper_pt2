@@ -9,3 +9,7 @@ fifo
 bilheteira
 README.md
 client.o
+fifo.o
+client.o
+bilheteira.o
+server.o
