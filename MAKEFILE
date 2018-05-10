@@ -1,4 +1,4 @@
-CC = gcc -Wall -pthread -lrt
+CC = gcc -Wall -pthread 
 
 default: client server bilheteira fifo
 
@@ -12,14 +12,14 @@ server.o: server.c
 server: server.o
 	$(CC) server.o -o server
 
-start.o: bilheteira.c
+bilheteira.o: bilheteira.c
 	$(CC) -c bilheteira.c -o bilheteira.o
-start: bilheteira.o
+bilheteira: bilheteira.o
 	$(CC) bilheteira.o -o bilheteira
 
-start.o: fifo.c
+fifo.o: fifo.c
 	$(CC) -c fifo.c -o fifo.o
-start: fifo.o
+fifo: fifo.o
 	$(CC) fifo.o -o fifo	
 
 clean: 
