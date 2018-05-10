@@ -1,100 +1,161 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include <unistd.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+#include <sys/stat.h>
 #include <fcntl.h>
-#include <time.h>
-#include <stdbool.h>
-#include <pthread.h>
+#include <poll.h>
+#include <unistd.h>
 
-#define WIDTH_SEAT 4
-#define WIDTH_PID 5
-#define MAX_TIME_OUT 100
-#define MAX_SEATS 99
-#define MAX_BUF 1024
-//TO-DOS
+#define MAX_ROOM_SEATS			9999
+#define MAX_CLI_SEATS			99
+#define WIDTH_PID				5
+#define WIDTH_XXNN				5
+#define WIDTH_SEAT				4
 
-//escrita em clog.txt
-//escrita em cbook.txt
+#define BUFFER_SIZE				4096
 
-//Function that initializes the client
-int client_init(char *time_out, char *num_wanted_seats, char *pref_seat_list)
-{
-	return 0;
-}
+int main(int argc, const char *argv[]) {
 
-//Space count of the argv[4]
-int chrcount(const char *str, char chr)
-{
-	if (!str)
-		return -1;
-	int cnt = 0;
-	for (const char *p = str; *p; ++p)
-		if (*p == chr)
-			++cnt;
-	return cnt;
-}
+	if (argc < 4) {
+		printf("Usage: %s <timeout> <num_wanted_seats> <pref_seat_list>\n", *argv);
+		exit(EXIT_FAILURE);
+	}
 
-int main(int argc, char *argv[])
-{
-	unsigned int time_out, num_wanted_seats,*pref_seat_list;
+	int timeout, num_wanted_seats, *pref_seat_list = NULL;
+	if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
+		printf("Invalid timeout\n");
+		exit(EXIT_FAILURE);
+	}
+	if (sscanf(argv[2], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0) {
+		printf("Invalid number of wanted seats\n");
+		exit(EXIT_FAILURE);
+	}
+	printf("Timeout is %u\nNumber of wanted seats is %u\n", timeout, num_wanted_seats);
 
-	if (argc < 4)
-	{
-		printf("Use: %s <time_out> <num_wanted_seats> <pref_seat_list>\n", *argv);
+	int num_pref_seat = 0;
+	for (int c = 0, offset = 0, n, c_size = 0, size = strlen(argv[3]); offset < size; offset += c) {
+		if (sscanf(argv[3] + offset, "%d%n", &n, &c) < 1) {
+			int *tmp = realloc(pref_seat_list, num_pref_seat * sizeof(*pref_seat_list));
+			if (!tmp) {
+				perror("realloc");
+				break;
+			}
+			pref_seat_list = tmp;
+			break;
+		}
+		if (n < 0) {
+			continue;
+		}
+		if (num_pref_seat == c_size) {
+			c_size = c_size? c_size *= 2: 1;
+			int *tmp = realloc(pref_seat_list, c_size * sizeof(*pref_seat_list));
+			if (!tmp) {
+				perror("realloc");
+				break;
+			}
+			pref_seat_list = tmp;
+		}
+		pref_seat_list[num_pref_seat++] = n;
+	}
+
+	if (num_pref_seat < num_wanted_seats) {
+		printf("Insuficient number of seat preferences\n");
+		// free pref_seat_list
+		return 0;
+	}
+	for (int i = 0; i < num_pref_seat; ++i)
+		printf("%d ", pref_seat_list[i]);
+	printf("\n");
+
+	char fifo_name[14] = "/tmp/ans";
+	snprintf(fifo_name + 8, WIDTH_PID + 1, "%05d", getpid());
+	if (mkfifo(fifo_name, 0666) < 0) {
+		perror("mkfifo");
+		// free pref_seat_list
+		return 0;
+	}
+	int fifo = open(fifo_name, O_RDONLY|O_NONBLOCK);
+	if (fifo < 0) {
+		perror("fifo open");
+		// unlink fifo
+		// free pref_seat_list
 		return 0;
 	}
 
-	if (sscanf(argv[1], "%u", &time_out) < 1 || sscanf(argv[2], "%u", &num_wanted_seats) < 1)
-	{
-		printf("Invalid input\n");
-		return -1;
+	char buffer[BUFFER_SIZE];
+	int n = 0;
+	snprintf(buffer + n, BUFFER_SIZE - n, "%d %d %n", getpid(), num_wanted_seats, &n);
+	for (int i = 0, c; i < num_pref_seat; ++i, n += c)
+		snprintf(buffer + n, BUFFER_SIZE - n, "%d %n", pref_seat_list[i], &c);
+	strcpy(&buffer[n - 1], "\n");
+	printf("buffer: %s\n", buffer);
+
+	int requests_fifo = open("/tmp/requests", O_WRONLY);
+	if (requests_fifo < 0) {
+		perror("requests fifo open");
+		// close fifo
+		// unlink fifo
+		// free pref_seat_list
+		return 0;
+	}
+	if (write(requests_fifo, buffer, n) < 0) {
+		perror("requests fifo write");
+		// close requests_fifo
+		// close fifo
+		// unlink fifo
+		// free pref_seat_list
+		return 0;
 	}
 
-	/*if(seat_counter<num_wanted_seats){
-		printf("Not enough seats specified\n");
-		return -1;
-	 }*/
-
-	if (time_out > MAX_TIME_OUT)
-	{
-		printf("Timeout too big\n");
-		return -1;
+	struct pollfd pfd = { .fd = fifo, .events = POLLIN };
+	int ret = poll(&pfd, 1, 1000 * timeout);
+	switch (ret) {
+		case -1:
+			perror("poll");
+			break;
+		case 0:
+			printf("timeout. exiting...\n");
+			break;
+		default:
+			printf("msg received: \n");
+			read(fifo, buffer, BUFFER_SIZE);
+			printf("'%s'\n", buffer);
 	}
-
-	if (num_wanted_seats > MAX_SEATS || num_wanted_seats < 1)
-	{
-		printf("Too much wanted seats\n");
-		return -1;
+	/*if (poll(&pfd, 1, 1000 * timeout) < 0) {
+		perror("poll");
+		// close requests_fifo
+		// close fifo
+		// unlink fifo
+		// free pref_seat_list
+		return 0;
 	}
-	int aux=chrcount(argv[3],' ')+1;
-	pref_seat_list=malloc(aux*sizeof(unsigned));
-	
-	if(pref_seat_list==NULL){
-	perror("Malloc");
-	return -1;
+	if (pfd.revents & POLLHUP) {
+		printf("timeout\nExiting...\n");
+		// close requests_fifo
+		// close fifo
+		// unlink fifo
+		// free pref_seat_list
+		return 0;
 	}
-	int n_pref=0;
-	for(int i=0,cnt_aux=0;i<=aux;i++){
-		int n;
-		if(sscanf(argv[3]+cnt_aux,"%u%n",&pref_seat_list[i],&n)<1)
-		break;
-		cnt_aux+=n;
-		n_pref++;
-	}
+	if (pfd.revents & (POLLERR|POLLNVAL)) {
+		printf("poll error\nExiting...\n");
+		// close requests_fifo
+		// close fifo
+		// unlink fifo
+		// free pref_seat_list
+		return 0;
+	}*/
 
-	if(n_pref<aux){
-		printf("<pref_seat_list> is WRONG! Nice try :)\n");
-		return -1;
-	}
+	/*if (pfd.revents & POLLIN)
+		printf("msg received\n");
+	printf("revents: %#010x\n", pfd.revents);*/
 
-	for(int i=0;i<n_pref;i++)
-	printf("%u\n",pref_seat_list[i]);
 
+
+	// close requests_fifo
+	// close fifo
+	// unlink fifo
+	// free pref_seat_list
 	return 0;
 }

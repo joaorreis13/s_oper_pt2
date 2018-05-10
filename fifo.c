@@ -39,9 +39,14 @@ int create_fifo_anspid(const char *name)
     int fd;
     char fifo[14] = "/tmp/";
     sprintf(fifo + 6, "%s", name);
-    // open, read, and display the message from the FIFO
-    fd = open(name, O_RDONLY);
-
+     // create the FIFO (named pipe)
+    if (mkfifo(fifo, 0666) < 0)
+    {
+        perror("Creating fifo");
+        return -1;
+    }
+    fd = open(fifo, O_RDONLY);
+    
     return fd;
 }
 
