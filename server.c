@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/types.h>
@@ -7,6 +8,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+
+#include "queue.h"
+#include "ticket_office.h"
 
 #define MAX_ROOM_SEATS			9999
 #define MAX_CLI_SEATS			99
@@ -20,17 +24,11 @@
 // parâmetros necessários para a execução de cada thread
 struct ticket_office_thr_params {
 	int ticket_office_id;
+	int num_seats;
 	FILE *slog;
-	intptr_t seats;
-	char **request_buffer;
-	pthread_cond_t *request_buffer_cond;
+	Seat *seats;
+	queue *requests_buffer;
 };
-
-// não sei se isto veio de algum ficheiro do prof ou se é suposto fazer alguma coisa com isto
-typedef struct{
-	pid_t pid_client;
-	int booked;
-} Seat;
 
 // declaração da função a executar pelos threads
 void *ticket_office_func(void *params);
@@ -82,16 +80,23 @@ int main(int argc, const char* argv[]) {
 		goto unlink_requests_fifo;
 	} printf("requests_fifo opened\n");
 
-	// alloca o buffer para requests; o seu tamanho deve ser unitário como especificado no enunciado e portanto
-	// a alocação não necessita de ser manual. No entanto, desta forma é mais fácil posteriormente mudar o
-	// tamanho do buffer através da macro REQUESTS_BUFFER_SIZE
-	char **requests_buffer = malloc(REQUESTS_BUFFER_SIZE * sizeof(*requests_buffer));
-	if (!requests_buffer) {
-		perror("malloc requests_buffer");
+	// aloca o array de seats que representa a sala com o número num_seats fornecido
+	Seat *seats = malloc(num_seats * sizeof(*seats));
+	if (!seats) {
+		perror("malloc seat array");
 		goto close_fifo_fd;
-	}
-	*requests_buffer = NULL;
-	printf("requests_buffer created\n");
+	} printf("Seat array created\n");
+	pthread_mutexattr_t mut_attr;
+	pthread_mutexattr_init(&mut_attr, PTHREAD_MUTEX_ERRORCHECK);
+	for (int i = 0; i < num_seats; ++i)
+		pthread_mutex_init(&seats[i].mut, &mut_attr);
+
+	// aloca o buffer para requests; o seu tamanho deve ser unitário como especificado no enunciado.
+	queue *requests_buffer;
+	if (queue_new(&requests_buffer, REQUESTS_BUFFER_SIZE) < 0) {
+		fprintf(stderr, "Error creating queue for requests\n");
+		goto free_seat_array;
+	} printf("Requests buffer created\n");
 
 	// abertura do ficheiro "slog.txt" para escrita. Poderia ser aberto por cada thread individualmente,
 	// mas como ficheiros abertos são partilhados entre threads, evita todos os problemas de concurrência
@@ -110,9 +115,6 @@ int main(int argc, const char* argv[]) {
 		goto fclose_slog;
 	} printf("ticket_office_thr created\n");
 
-	// pthread_cond_t a usar pelos threads para sinalizar que o requests_buffer tem algo para ser retirado
-	pthread_cond_t request_buffer_cond = PTHREAD_COND_INITIALIZER;
-
 	// struct ticket_office_thr_params (totp) a ser passada a cada thread
 	struct ticket_office_thr_params *totp;
 	// criação dos threads. Falta: se houver um erro na alocação de memória dos parâmetros a ser passados ou na
@@ -124,18 +126,25 @@ int main(int argc, const char* argv[]) {
 			goto free_ticket_office_thr;
 		}
 		totp->slog = slog;
-		totp->seats = 0;
-		totp->request_buffer = requests_buffer;
-		totp->request_buffer_cond = &request_buffer_cond;
+		totp->seats = seats;
+		totp->requests_buffer = requests_buffer;
+		totp->num_seats = num_seats;
 		totp->ticket_office_id = i;
-		if (errno = pthread_create(ticket_office_thr + i, NULL, ticket_office_func, totp) < 0) {
+		if ((errno = pthread_create(ticket_office_thr + i, NULL, ticket_office_func, totp) < 0)) {
 			perror("pthread_create");
 			goto free_ticket_office_thr;
 			//	missing waiting for already created threads in case one fails
 		}
 	} printf("threads started\n");
 
-	// wait for opening time to expire
+	const struct timespec ts = { .tv_sec = open_time, .tv_nsec = 0};
+	if (nanosleep(&ts, NULL) < 0) {
+		perror("nanosleep");
+		// kill threads;
+		goto free_ticket_office_thr;
+	}
+	// use select/poll to read from FIFO to buffer with timeout
+
 	// O timeout deve ser implementado neste thread (main thread),
 	// que sinalizará todos os outros aquando do seu término por forma a estes terminarem a sua execução: por implementar
 
@@ -154,8 +163,12 @@ int main(int argc, const char* argv[]) {
 		goto free_ticket_office_thr;
 	} printf("sbook created\n");
 
-	// falta fazer a escrita no ficheiro sbook do resultado apropriado
-
+	// escrita no ficheiro sbook dos lugares efectivamente reservados.
+	// Não é necessário bloquear mutexes dos lugares porque só há um thread a ler estes valores.
+	for (int i = 0; i < num_seats; ++i)
+		if (!seats[i].free)
+			fprintf(sbook, "%0*d\n", WIDTH_SEAT, i);
+	goto fclose_sbook;
 
 fclose_sbook:
 	if (fclose(sbook) < 0)
@@ -172,13 +185,17 @@ fclose_slog:
 	printf("slog closed\n");
 
 free_requests_buffer:
-	free(requests_buffer);
+	queue_free(requests_buffer);
 	printf("requests_buffer freed\n");
 
 close_fifo_fd:
 	if (close(fifo_fd) < 0)
 		perror("close requests fifo");
 	printf("requests_fifo closed\n");
+
+free_seat_array:
+	free(seats);
+	printf("seat array freed\n");
 
 unlink_requests_fifo:
 	if (unlink(requests_fifo) < 0)
@@ -191,20 +208,140 @@ unlink_requests_fifo:
 // função a ser executada por cada thread; por implementar
 /* 
  * Em falta:
- * 	Registar a abertura da bilheteira no ficheiro slog;
- * 	Esperar, através da pthread_cond_t que o buffer tenha um request;
- * 	Retirar o pedido do buffer e processá-lo;
- * 	Se tiver valores inválidos retornar resposta apropriada para o FIFO respectivo;
- * 	Começar a reservar os lugares sequencialmente a partir da lista de preferências através da API especificada no enunciado;
- * 	Invocar a macro DELAY() em cada chamada a esta API;
  * 	Após o pedido satisfeito ou impossibilidade de atender o pedido fechar a bilheteira;
  * 		Razões para a impossibilidade do atendimento do pedido:
  * 			Fim da lista de preferências atingido;
  * 			Timeout sinalizado pelo main thread;
  * 			Sala cheia;
- * 	Registar o fecho da bilheteira no ficheiro slog;
  */
 void *ticket_office_func(void *params) {
-	
+	struct ticket_office_thr_params *args = params;
+	FILE *slog = args->slog;
+	fprintf(slog, "%02d-OPEN\n", args->ticket_office_id);
+
+	for (;;) {
+		if (pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL))
+			fprintf(stderr, "to%d: Unable to set cancel state. Thread may not be "
+			                "canceled and run in an infinite loop.\n", args->ticket_office_id);
+		pthread_testcancel();
+
+		if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL))
+			fprintf(stderr, "to%d: Unable to set cancel state. Thread may be canceled "
+			                "sooner than expected, unable to free some resources.\n", args->ticket_office_id);
+		// get request from requests_buffer, this operation blocks until there is something on it
+		char *request;
+		if (queue_take(args->requests_buffer, &request) < 0) {
+			fprintf(stderr, "to%d: Error taking request from queue\n", args->ticket_office_id);
+			goto close_ticket_office;
+		}
+
+		int client_pid, num_wanted_seats, *pref_seat_list = NULL;
+		int offset = 0, n;
+		if (sscanf(request, "%d %n", &client_pid, &n) < 1) {
+			fprintf(stderr, "to%d: Error reading client pid from request\n", args->ticket_office_id);
+			goto close_ticket_office;
+		}
+		offset += n;
+
+		char fifo_name[9 + WIDTH_PID] = "/tmp/ans";
+		sprintf(fifo_name + 8, "%0*d", WIDTH_PID + 1, client_pid);
+		FILE *fifo = fopen(fifo_name, "w");
+		if (!fifo) {
+			fprintf(stderr, "to%d: fifo open:", args->ticket_office_id);
+			perror(NULL);
+			goto close_ticket_office;
+		}
+
+		if (sscanf(request + offset, "%d %n", &num_wanted_seats, &n) < 1) {
+			fprintf(stderr, "to%d: Error reading client pid from request\n", args->ticket_office_id);
+			goto close_fifo;
+		}
+		offset += n;
+
+		int exit_code = 0;
+
+		if (num_wanted_seats < 1) {
+			fprintf(stderr, "to%d: Number of wanted seats is too small.\n", args->ticket_office_id);
+			exit_code = -4;
+			goto fifo_print_exit_code;
+		}
+		if (num_wanted_seats > MAX_CLI_SEATS) {
+			fprintf(stderr, "to%d: Number of wanted seats is too big.\n", args->ticket_office_id);
+			exit_code = -1;
+			goto fifo_print_exit_code;
+		}
+
+		int num_pref_seat = 0;
+		for (int c, c_size = 0, size = strlen(request + offset)+offset; offset < size; offset += n) {
+			if (sscanf(request + offset, "%d %n", &c, &n) < 1) {
+				int *tmp = realloc(pref_seat_list, num_pref_seat * sizeof(*pref_seat_list));
+				if (!tmp) {
+					perror("realloc");
+					break;
+				}
+				pref_seat_list = tmp;
+				break;
+			}
+			if (c < 0 || c > args->num_seats) {
+				exit_code = -3;
+				goto free_pref_seat_list;
+			}
+			if (num_pref_seat == c_size) {
+				c_size = c_size? c_size * 2: 1;
+				int *tmp = realloc(pref_seat_list, c_size * sizeof(*pref_seat_list));
+				if (!tmp) {
+					perror("realloc");
+					break;
+				}
+				pref_seat_list = tmp;
+			}
+			pref_seat_list[num_pref_seat++] = c;
+		}
+		if (num_pref_seat < num_wanted_seats || num_pref_seat > MAX_CLI_SEATS) {
+			fprintf(stderr, "to%d: Invalid number of seat preferences.\n", args->ticket_office_id);
+			exit_code = -2;
+			goto free_pref_seat_list;
+		}
+
+		int *allocated_seats = malloc(num_wanted_seats * sizeof(*allocated_seats));
+		if (!allocated_seats) {
+			perror("malloc allocated_seats");
+			goto free_pref_seat_list;
+		}
+		
+		int num_allocated_seats = 0;
+		for (int i = 0; i < num_pref_seat && num_allocated_seats < num_wanted_seats; ++i) {
+			if (isSeatFree(args->seats, pref_seat_list[i])) {
+				bookSeat(args->seats, pref_seat_list[i], client_pid);
+				allocated_seats[num_allocated_seats++] = pref_seat_list[i];
+			}
+		}
+
+		if (num_allocated_seats < num_wanted_seats) {
+			for (int i = 0; i < num_allocated_seats; ++i)
+				freeSeat(args->seats, allocated_seats[i]);
+			exit_code = -5;
+			goto free_allocated_seats;
+		}
+
+	free_allocated_seats:
+		free(allocated_seats);
+
+	free_pref_seat_list:
+		free(pref_seat_list);
+
+	fifo_print_exit_code:
+		fprintf(fifo, "%d\n", exit_code);
+		// check if exit successful, if so print booked seats;
+
+	close_fifo:
+		if (fclose(fifo) < 0)
+			perror("fclose fifo");
+
+	} // end of loop, ticket office is closing
+
+close_ticket_office:
+	fprintf(slog, "%02d-CLOSED\n", args->ticket_office_id);
+	free(args);
 	return NULL;
 }

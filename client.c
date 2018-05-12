@@ -23,11 +23,11 @@ int main(int argc, const char *argv[]) {
 	// ver o número de argumentos. Algo está mal porque na especificação o prof diz que isto recebe
 	// três argumentos, mas a usar o ficheiro start.c dele ele só passa dois:
 	if (argc < 3) {
-		printf("Usage: %s <num_wanted_seats> <pref_seat_list>\n", *argv);
+		printf("Usage: %s <timeout>? <num_wanted_seats> <pref_seat_list>\n", *argv);
 		exit(EXIT_FAILURE);
 	}
 
-	int timeout, num_wanted_seats, *pref_seat_list = NULL;
+	int timeout = 0, num_wanted_seats, *pref_seat_list = NULL;
 	// converter o primeiro argumento num inteiro; comentado porque o programa do prof não o passa
 	/*if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
 		printf("Invalid timeout\n");
@@ -167,12 +167,15 @@ int main(int argc, const char *argv[]) {
 close_requests_fifo:
 	if (close(requests_fifo) < 0)
 		perror("close requests_fifo");
+
 close_fifo:
 	if (close(fifo) < 0)
 		perror("close fifo");
+
 unlink_fifo:
 	if (unlink(fifo_name) < 0)
 		perror("unlink fifo");
+
 free_pref_seat_list:
 	free(pref_seat_list);
 

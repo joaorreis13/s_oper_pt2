@@ -1,30 +1,22 @@
-CC = gcc -Wall -pthread 
+CC = gcc
+CFLAGS = -Wall -Wextra
 
-default: client server bilheteira fifo
+all: start client server
 
-client.o: client.c
-	$(CC) -c client.c -o client.o
- client: client.o
-	$(CC) client.o -o client
+start: start.c
+	$(CC) $(CFLAGS) $^ -o $@
 
-server.o: server.c 
-	$(CC) -c server.c -o server.o
-server: server.o
-	$(CC) server.o -o server
+client: client.c
+	$(CC) $(CFLAGS) $^ -o $@
 
-bilheteira.o: bilheteira.c
-	$(CC) -c bilheteira.c -o bilheteira.o
-bilheteira: bilheteira.o
-	$(CC) bilheteira.o -o bilheteira
+server: server.c queue.o ticket_office.o
+	$(CC) $(CFLAGS) -pthread $^ -o $@
 
-fifo.o: fifo.c
-	$(CC) -c fifo.c -o fifo.o
-fifo: fifo.o
-	$(CC) fifo.o -o fifo	
+%.o : %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
-clean: 
-	-rm -f *.o
-	-rm -f client
-	-rm -f start
-	-rm -f bilheteira
-	-rm -f fifo
+clean:
+	-rm -f *.o client server start
+
+clean_logs:
+	-rm -f *log.txt *book.txt
