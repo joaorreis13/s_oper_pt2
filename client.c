@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <unistd.h>
 
 #define WIDTH_PID		5
@@ -14,38 +13,37 @@ int main(int argc, const char *argv[]) {
 	//	código do prof
 	printf("** Running process %d (PGID %d) **\n", getpid(), getpgrp());
 
-	if (argc == 3)
-		printf("ARGS: %s | %s\n", argv[1], argv[2]);
+	if (argc == 4)
+		printf("ARGS: %s | %s | %s\n", argv[1], argv[2], argv[3]);
 
 	sleep(1);
 	// código do prof termina aqui
 
-	// ver o número de argumentos. Algo está mal porque na especificação o prof diz que isto recebe
-	// três argumentos, mas a usar o ficheiro start.c dele ele só passa dois:
-	if (argc < 3) {
-		printf("Usage: %s <timeout>? <num_wanted_seats> <pref_seat_list>\n", *argv);
+	// verificar se o número de argumentos está correcto
+	if (argc < 4) {
+		printf("Usage: %s <timeout> <num_wanted_seats> <pref_seat_list>\n", *argv);
 		exit(EXIT_FAILURE);
 	}
 
-	int timeout = 0, num_wanted_seats, *pref_seat_list = NULL;
-	// converter o primeiro argumento num inteiro; comentado porque o programa do prof não o passa
-	/*if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
+	int timeout, num_wanted_seats, *pref_seat_list = NULL;
+	// converter o primeiro argumento num inteiro;
+	if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
 		printf("Invalid timeout\n");
 		exit(EXIT_FAILURE);
-	}*/
-	if (sscanf(argv[1], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0) {
+	}
+	if (sscanf(argv[2], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0) {
 		printf("Invalid number of wanted seats\n");
 		exit(EXIT_FAILURE);
 	}
 	printf("Timeout is %u\nNumber of wanted seats is %u\n", timeout, num_wanted_seats);
 
-	// percorrer o 2º argumento a procurar inteiros que representam o número de um lugar correspondente à
+	// percorrer o 3º argumento a procurar inteiros que representam o número de um lugar correspondente à
 	// preferência. Os números encontrados são guardados no array dinamicamente alocado pref_seat_list.
 	// para evitar usar o realloc a cada iteração, a memória alocada cresce sempre para o dobro quando fica cheia
 	// e o tamanho final é reajustado quando o ciclo acaba.
 	int num_pref_seat = 0;
-	for (int c = 0, offset = 0, n, c_size = 0, size = strlen(argv[2]); offset < size; offset += c) {
-		if (sscanf(argv[2] + offset, "%d%n", &n, &c) < 1) {
+	for (int c = 0, offset = 0, n, c_size = 0, size = strlen(argv[3]); offset < size; offset += c) {
+		if (sscanf(argv[3] + offset, "%d%n", &n, &c) < 1) {
 			// formato de número inválido, ajusta o tamanho do array para apenas o necessário e sai do ciclo
 			int *tmp = realloc(pref_seat_list, num_pref_seat * sizeof(*pref_seat_list));
 			if (!tmp) {
@@ -59,7 +57,7 @@ int main(int argc, const char *argv[]) {
 			continue;
 		if (num_pref_seat == c_size) {
 			// se a memória actualmente alocada já estiver cheia, duplicar o tamanho do array
-			c_size = c_size? c_size *= 2: 1;
+			c_size = c_size? c_size * 2: 1;
 			int *tmp = realloc(pref_seat_list, c_size * sizeof(*pref_seat_list));
 			if (!tmp) {
 				perror("realloc");
@@ -77,18 +75,19 @@ int main(int argc, const char *argv[]) {
 		goto free_pref_seat_list;
 	}
 
+	printf("seat preferences: ");
 	// imprime os números das preferências encontrados
 	for (int i = 0; i < num_pref_seat; ++i)
 		printf("%d ", pref_seat_list[i]);
 	printf("\n");
 
 	// cria um FIFO com o nome "/tmp/ansxxxxx", correspondente ao PID
-	char fifo_name[14] = "/tmp/ans";
-	snprintf(fifo_name + 8, WIDTH_PID + 1, "%05d", getpid());
+	char fifo_name[WIDTH_PID + 8] = "/tmp/ans";
+	sprintf(fifo_name + 8, "%0*d", WIDTH_PID, getpid());
 	if (mkfifo(fifo_name, 0666) < 0) {
 		perror("mkfifo");
 		goto free_pref_seat_list;
-	}
+	} printf("created fifo %s\n", fifo_name);
 
 	// abre o FIFO criado só para leitura, por onde vai receber a resposta do servidor
 	// O_NONBLOCK é especificado para a chamada ao sistema não bloquear enquanto o outro lado do FIFO não for aberto
@@ -96,7 +95,7 @@ int main(int argc, const char *argv[]) {
 	if (fifo < 0) {
 		perror("fifo open");
 		goto unlink_fifo;
-	}
+	} printf("fifo opened\n");
 
 	// imprime num buffer a mensagem que vai enviar ao servidor através do FIFO requests no formato especificado pelo prof
 	char buffer[BUFFER_SIZE];
@@ -104,7 +103,7 @@ int main(int argc, const char *argv[]) {
 	snprintf(buffer, BUFFER_SIZE, "%d %d %n", getpid(), num_wanted_seats, &n);
 	for (int i = 0, c; i < num_pref_seat; ++i, n += c)
 		snprintf(buffer + n, BUFFER_SIZE - n, "%d %n", pref_seat_list[i], &c);
-	strcpy(&buffer[n - 1], "\n");
+	buffer[n - 1] = '\n';
 	printf("buffer: %s\n", buffer);
 
 	// abre o FIFO "/tmp/requests" para escrita
@@ -112,16 +111,15 @@ int main(int argc, const char *argv[]) {
 	if (requests_fifo < 0) {
 		perror("requests fifo open");
 		goto close_fifo;
-	}
+	} printf("requests fifo opened\n");
 
 	// escreve o conteúdo do buffer no FIFO
 	if (write(requests_fifo, buffer, n) < 0) {
 		perror("requests fifo write");
 		goto close_requests_fifo;
-	}
+	} printf("wrote '%*s' to requests fifo\n", n, buffer);
 
-	// ler do FIFO de resposta com um timeout, comentado porque o ficheiro start.c não o usa,
-	// assumindo um timeout infinito
+	// ler do FIFO de resposta com um timeout
 	/*struct pollfd pfd = { .fd = fifo, .events = POLLIN };
 	int ret = poll(&pfd, 1, 1000 * timeout);
 	switch (ret) {
@@ -142,7 +140,7 @@ int main(int argc, const char *argv[]) {
 	if (n < 0) {
 		perror("read fifo");
 		goto close_requests_fifo;
-	}
+	} printf("read %d bytes - '%.*s' from fifo\n", n, n, buffer);
 
 	/*
 	 * Em falta:

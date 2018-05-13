@@ -69,7 +69,8 @@
  * 
  * The configuration file must have the following format (any additional whitespaces are ignored):
  * 
- * <start delay in microseconds (us)> <number of seats wanted> <list of seat preferences>
+ * <start delay in microseconds (us)> <timeout in milliseconds> <number of seats wanted>
+ * <list of seat preferences>
  * 
  * where the list of seat preferences is composed of a set of seat numbers followed by END.
  */
@@ -90,7 +91,7 @@
 #include <signal.h>
 #include <unistd.h>
 
-// uncomment this line to enable passing invalid arguments to client processes
+// uncomment this line to disable passing invalid arguments to client processes
 // (or define it through command line/Makefile)
 //#define ADDITIONAL_CHECK
 
@@ -127,14 +128,14 @@
  * 
  */
 enum TP2_Exit_Status {
-	INVALID_CMD_ARGS = 1,                 // the set of arguments is invalid
-	FILE_OPEN_FAILED,                     // unable to open configuration file
-	SIG_HANDLER_ERR,                      // unable to install signal handler
-	FORK_FAILED,                          // unable to create a new process
-	SET_PGID_FAILED,                      // unable to set process group
-	STDIN_REDIR_ERR,                      // unable to redirect standard input
-	CLIENT_RUNTIME_ERR,                   // one or more client processes failed (exit status != 0)
-	CLIENT_EXEC_FAILED                    // unable to execute client program (execlp call failed)
+  INVALID_CMD_ARGS = 1,                 // the set of arguments is invalid
+  FILE_OPEN_FAILED,                     // unable to open configuration file
+  SIG_HANDLER_ERR,                      // unable to install signal handler
+  FORK_FAILED,                          // unable to create a new process
+  SET_PGID_FAILED,                      // unable to set process group
+  STDIN_REDIR_ERR,                      // unable to redirect standard input
+  CLIENT_RUNTIME_ERR,                   // one or more client processes failed (exit status != 0)
+  CLIENT_EXEC_FAILED                    // unable to execute client program (execlp call failed)
 };
 
 /**
@@ -142,12 +143,13 @@ enum TP2_Exit_Status {
  * 
  */
 enum ReadClientInfoStatus {
-	INPUT_ENDED = 0,                      // EOF reached
-	INVALID_POINTER = -11,                // pointer to struct client_info object is NULL
-	INVALID_START_DELAY = -12,            // unable to read/parse the start delay
-	INVALID_NUM_WANTED_SEATS = -13,       // unable to read/parse the number of seats/tickets wanted
-	INVALID_SEAT_NUMBER = -14,            // unable to read/parse a seat number (list of preferences)
-	LIST_PREF_TOO_SHORT = -15             // the list of preferences is too short (< #seats/tickets)
+  INPUT_ENDED = 0,                      // EOF reached
+  INVALID_POINTER = -11,                // pointer to struct client_info object is NULL
+  INVALID_START_DELAY = -12,            // unable to read/parse the start delay
+  INVALID_NUM_WANTED_SEATS = -13,       // unable to read/parse the number of seats/tickets wanted
+  INVALID_SEAT_NUMBER = -14,            // unable to read/parse a seat number (list of preferences)
+  LIST_PREF_TOO_SHORT = -15,            // the list of preferences is too short (< #seats/tickets)
+  INVALID_TIMEOUT = -16                 // unable to read/parse client timeout
 };
 
 /**
@@ -156,14 +158,16 @@ enum ReadClientInfoStatus {
  *            seq_no: relative order number within the file (useful for error messages);
  *          delay_us: the time offset, in microseconds and relative to the previous client, when the
  *                    client should run [before invoking fork()];
+ *           timeout: client timeout in milliseconds;
  *  num_wanted_seats: number of seats/tickets requested by the client;
  *       preferences: the list of preferences (seat numbers).
  */
 struct client_info {
-	int seq_no;                           // sequence number (client relative order)
-	int delay_us;                         // delay in microseconds
-	int num_wanted_seats;                 // number of seats/tickets wanted
-	int preferences[MAX_CLI_SEATS];       // list of preferences (seat numbers)
+  int seq_no;                           // sequence number (client relative order)
+  int delay_us;                         // delay in microseconds
+  int timeout_ms;                       // client timeout in milliseconds
+  int num_wanted_seats;                 // number of seats/tickets wanted
+  int preferences[MAX_CLI_SEATS];       // list of preferences (seat numbers)
 };
 
 // global variable holding the PGID of all client processes and of the LEADER process [G2]
@@ -192,35 +196,35 @@ static int main_loop();
  * @param fmt Format (as of printf).
  */
 static void log_error(const char *fmt, ...) {
-	va_list args;
+  va_list args;
 
-	// initialize variadic argument list
-	va_start(args, fmt);
+  // initialize variadic argument list
+  va_start(args, fmt);
 
-	// print error message preamble ("\n\n** [<process PID>] ")
-	fprintf(
-		stderr,
-		"\n%s************************%s [PID %0" QUOTE(WIDTH_PID) "d] %s************************%s\n",
-		ANSI_COLOR_RED, ANSI_COLOR_WHITE, getpid(), ANSI_COLOR_RED, ANSI_COLOR_WHITE
-	);
+  // print error message preamble ("\n\n** [<process PID>] ")
+  fprintf(
+    stderr,
+    "\n%s************************%s [PID %0" QUOTE(WIDTH_PID) "d] %s************************%s\n",
+    ANSI_COLOR_RED, ANSI_COLOR_WHITE, getpid(), ANSI_COLOR_RED, ANSI_COLOR_WHITE
+  );
 
-	// print the format string given using the provided arguments, if any
-	// [vprintf() is used to enable passing the list of variadic arguments]
-	vfprintf(stderr, fmt, args);
+  // print the format string given using the provided arguments, if any
+  // [vprintf() is used to enable passing the list of variadic arguments]
+  vfprintf(stderr, fmt, args);
 
-	// if errno is set, include the corresponding error string
-	if(errno != 0)
-		fprintf(stderr, ": %s", strerror(errno));
-	
-	// print the epilogue
-	fprintf(
-		stderr,
-		"!\n%s*************************************************************%s\n",
-		ANSI_COLOR_RED, ANSI_COLOR_RESET
-	);
+  // if errno is set, include the corresponding error string
+  if(errno != 0)
+    fprintf(stderr, ": %s", strerror(errno));
+  
+  // print the epilogue
+  fprintf(
+    stderr,
+    "!\n%s*************************************************************%s\n",
+    ANSI_COLOR_RED, ANSI_COLOR_RESET
+  );
 
-	// end variadic argument list
-	va_end(args);
+  // end variadic argument list
+  va_end(args);
 }
 
 /**
@@ -232,31 +236,31 @@ static void log_error(const char *fmt, ...) {
  * @param signo The signal being received.
  */
 static void sigint_handler(int signo) {
-	char answer;
+  char answer;
 
-	// send SIGSTOP signal to all client processes and to the LEADER process [process group G2]
-	kill(-cgroup, SIGSTOP);
+  // send SIGSTOP signal to all client processes and to the LEADER process [process group G2]
+  kill(-cgroup, SIGSTOP);
 
-	printf(
-		"\n\nDo you want to stop all client processes? (Y to confirm, any other key to continue)\n"
-	);
-	// read a character from stdin and ignore all other characters ("clears" stdin)
-	scanf("%c%*[^\n]%*c", &answer);
+  printf(
+    "\n\nDo you want to stop all client processes? (Y to confirm, any other key to continue)\n"
+  );
+  // read a character from stdin and ignore all other characters ("clears" stdin)
+  scanf("%c%*[^\n]%*c", &answer);
 
-	// if the user intends to stop
-	if (answer == 'y' || answer == 'Y') {
-		// send a SIGINT signal to all other processes (process group G2)
-		kill(-cgroup, SIGINT);
+  // if the user intends to stop
+  if (answer == 'y' || answer == 'Y') {
+    // send a SIGINT signal to all other processes (process group G2)
+    kill(-cgroup, SIGINT);
 
-		// and terminate the program
-		exit(0);
-	}
+    // and terminate the program
+    exit(0);
+  }
 
-	// otherwise, print a message
-	printf("Resuming...\n");
+  // otherwise, print a message
+  printf("Resuming...\n");
 
-	// and send SIGCONT signal to process group G2 in order to resume LEADER and client processes
-	kill(-cgroup, SIGCONT);
+  // and send SIGCONT signal to process group G2 in order to resume LEADER and client processes
+  kill(-cgroup, SIGCONT);
 }
 
 
@@ -264,92 +268,92 @@ static void sigint_handler(int signo) {
  * @brief Main function.
  */
 int main(int argc, char* argv[]) {
-	struct sigaction sa;
-	int fd, ret = 0;
+  struct sigaction sa;
+  int fd, ret = 0;
 
-	// takes a single argument (input file)
-	if (argc != 2) {
-		printf("Usage: %s <input file>\n", argv[0]);
+  // takes a single argument (input file)
+  if (argc != 2) {
+    printf("Usage: %s <input file>\n", argv[0]);
 
-		return INVALID_CMD_ARGS;
-	}
+    return INVALID_CMD_ARGS;
+  }
 
-	// open the file
-	if ((fd = open(argv[1], O_RDONLY)) == -1) {
-		// on failure, print the reason why
-		log_error("Unable to open file");
+  // open the file
+  if ((fd = open(argv[1], O_RDONLY)) == -1) {
+    // on failure, print the reason why
+    log_error("Unable to open file");
 
-		return FILE_OPEN_FAILED;
-	}
+    return FILE_OPEN_FAILED;
+  }
 
-	// set SIGINT handler (struct sigaction object)
-	sa.sa_handler = sigint_handler;
-	sa.sa_flags = 0;
-	sigemptyset(&sa.sa_mask);
+  // set SIGINT handler (struct sigaction object)
+  sa.sa_handler = sigint_handler;
+  sa.sa_flags = 0;
+  sigemptyset(&sa.sa_mask);
 
-	// install it
-	if (sigaction(SIGINT, &sa, NULL) == -1) {
-		// on failure, print an error message
-		log_error("Unable to install handler");
+  // install it
+  if (sigaction(SIGINT, &sa, NULL) == -1) {
+    // on failure, print an error message
+    log_error("Unable to install handler");
 
-		// and close the file
-		close(fd);
-		
-		return SIG_HANDLER_ERR;
-	}
+    // and close the file
+    close(fd);
+    
+    return SIG_HANDLER_ERR;
+  }
 
-	// create the LEADER process
-	switch((cgroup = fork())) {
-		/* failure */
-		case -1:
-			log_error("Unable to create LEADER process");
-			
-			ret = FORK_FAILED;
+  // create the LEADER process
+  switch((cgroup = fork())) {
+    /* failure */
+    case -1:
+      log_error("Unable to create LEADER process");
+      
+      ret = FORK_FAILED;
 
-			break;
+      break;
 
-		/* child */
-		case 0:
-			// default SIGINT handler (terminate process)
-			sa.sa_handler = SIG_DFL;
+    /* child */
+    case 0:
+      // default SIGINT handler (terminate process)
+      sa.sa_handler = SIG_DFL;
 
-			// install the default SIGINT handler (only the PARENT process will handle SIGINT)
-			if (sigaction(SIGINT, &sa, NULL) == -1) {
-				// on failure, print an error message
-				log_error("Unable to install handler");
+      // install the default SIGINT handler (only the PARENT process will handle SIGINT)
+      if (sigaction(SIGINT, &sa, NULL) == -1) {
+        // on failure, print an error message
+        log_error("Unable to install handler");
 
-				// and close the file
-				close(fd);
-				
-				return SIG_HANDLER_ERR;
-			}
+        // and close the file
+        close(fd);
+        
+        return SIG_HANDLER_ERR;
+      }
 
-			// create a new process group [G2] so that signals sent by the terminal are no longer received
-			if (setpgrp() == -1) {
-				// on failure, print an error message
-				log_error("Unable to set group id");
+      // create a new process group [G2] so that signals sent by the terminal are no longer received
+      if (setpgrp() == -1) {
+        // on failure, print an error message
+        log_error("Unable to set group id");
 
-				return SET_PGID_FAILED;
-			}
+        return SET_PGID_FAILED;
+      }
 
-			// redirect stdin to ease the use of C libraries (by default, input is read from stdin)
-			// [redirect_stdin() already closes the file descriptor within as it is no longer needed]
-			if(!redirect_stdin(fd))
-				return STDIN_REDIR_ERR;
+      // redirect stdin to ease the use of C libraries (by default, input is read from stdin)
+      // [redirect_stdin() already closes the file descriptor within as it is no longer needed]
+      if(!redirect_stdin(fd))
+        return STDIN_REDIR_ERR;
 
-			// main loop to read each client's information and to create client processes
-			return (main_loop() != 0) ? CLIENT_RUNTIME_ERR : 0;
+      // main loop to read each client's information and to create client processes
+      return (main_loop() != 0) ? CLIENT_RUNTIME_ERR : 0;
 
-		/* parent */
-		default:
-			// close file (this process will not read the input file)
-			close(fd);
+    /* parent */
+    default:
+      // close file (this process will not read the input file)
+      close(fd);
 
-			// wait for the LEADER process
-			ret = (handle_zombies(0) != 0) ? CLIENT_RUNTIME_ERR : 0;
-	}
+      // wait for the LEADER process
+      ret = (handle_zombies(0) != 0) ? CLIENT_RUNTIME_ERR : 0;
+  }
 
-	return ret;
+  return ret;
 }
 
 //
@@ -369,36 +373,36 @@ int main(int argc, char* argv[]) {
  * @return A boolean indicating whether redirection succeeded or failed.
  */
 static bool redirect_stdin(int fd) {
-	// check if this is a valid descriptor
-	if (fcntl(fd, F_GETFD) == -1) {
-		// if it is not, print an error message
-		log_error("Invalid file descriptor");
+  // check if this is a valid descriptor
+  if (fcntl(fd, F_GETFD) == -1) {
+    // if it is not, print an error message
+    log_error("Invalid file descriptor");
 
-		return false;
-	}
+    return false;
+  }
 
-	// redirect stdin to the file
-	if(dup2(fd, STDIN_FILENO) == -1) {
-		// if it fails, print the reason why
-		log_error("Unable to redirect standard input");
+  // redirect stdin to the file
+  if(dup2(fd, STDIN_FILENO) == -1) {
+    // if it fails, print the reason why
+    log_error("Unable to redirect standard input");
 
-		// close the file because the program will terminate
-		close(fd);
+    // close the file because the program will terminate
+    close(fd);
 
-		return false;
-	}
+    return false;
+  }
 
-	// if everything succeeds, only one file descriptor is needed (STDIN_FILENO)
-	close(fd);
+  // if everything succeeds, only one file descriptor is needed (STDIN_FILENO)
+  close(fd);
 
-	return true;
+  return true;
 }
 
 /**
  * @brief Reads the information respecting a given client.
  * 
  * read_client_info attempts to read the required client information in the following format:
- *    <start delay in microseconds (us)> <no. of seats/tickets wanted> <list of seat preferences>.
+ *    <start delay in us> <timeout in ms> <no. of seats/tickets wanted> <list of seat preferences>.
  * 
  * Note: the list of seat preferences ends when a terminator string is found (macro PREF_LIST_END).
  * 
@@ -410,103 +414,114 @@ static bool redirect_stdin(int fd) {
  * @return int On success, the size of the list; on failure, an error code (negative value).
  */
 static int read_client_info(struct client_info *ci) {
-	static int seq_no = 0;
+  static int seq_no = 0;
 
-	const size_t plen = strlen(PREF_LIST_END);
-	char buf[MAX_TOKEN_LEN];
-	int idx = -1, ret;
+  const size_t plen = strlen(PREF_LIST_END);
+  char buf[MAX_TOKEN_LEN];
+  int idx = -1, ret;
 
-	// check if the pointer is not null
-	if (ci == NULL) {
-		log_error("Invalid pointer for struct client_info");
+  // check if the pointer is not null
+  if (ci == NULL) {
+    log_error("Invalid pointer for struct client_info");
 
-		return INVALID_POINTER;
-	}
+    return INVALID_POINTER;
+  }
 
-	// set sequence number
-	ci->seq_no = ++seq_no;
+  // set sequence number
+  ci->seq_no = ++seq_no;
 
-	// clear list of preferences
-	memset(ci->preferences, -1, sizeof(ci->preferences));
+  // clear list of preferences
+  memset(ci->preferences, 0xFF, sizeof(ci->preferences));
 
-	// if the start delay could not be read or if it is invalid
-	if(((ret = scanf("%d", &ci->delay_us)) != 1) || (ci->delay_us < 0)) {
-		// if there is nothing else to read, return zero to let the caller know
-		if (ret == EOF)
-			return INPUT_ENDED;
+  // if the start delay could not be read or if it is invalid
+  if(((ret = scanf("%d", &ci->delay_us)) != 1) || (ci->delay_us < 0)) {
+    // if there is nothing else to read, return zero to let the caller know
+    if (ret == EOF)
+      return INPUT_ENDED;
 
-		// otherwise, print an error message and report it
-		if (ret != 1)
-			log_error("Unable to read the start delay (client #%d)", seq_no);
-		else
-			log_error("Invalid start delay (client #%d): %d", seq_no, ci->delay_us);
+    // otherwise, print an error message and report it
+    if (ret != 1)
+      log_error("Unable to read the start delay (client #%d)", seq_no);
+    else
+      log_error("Invalid start delay (client #%d): %d", seq_no, ci->delay_us);
 
-		return INVALID_START_DELAY;
-	}
+    return INVALID_START_DELAY;
+  }
 
-	// if an error occurred while reading the number of seats/tickets wanted
-	if(scanf("%d", &ci->num_wanted_seats) != 1) {
-		// report it
-		log_error("Unable to read the no. of seats/tickets wanted (client #%d)", seq_no);
+  // if an error occurred while reading the timeout
+  if(((ret = scanf("%d", &ci->timeout_ms)) != 1) || (ci->timeout_ms < 1)) {
+    // report it
+    if (ret != 1)
+      log_error("Unable to read client timeout (client #%d)", seq_no);
+    else
+      log_error("Invalid client timeout (client #%d): %d", seq_no, ci->timeout_ms);
 
-		return INVALID_NUM_WANTED_SEATS;
-	}
+    return INVALID_TIMEOUT;
+  }
 
-#ifdef ADDITIONAL_CHECK
-	// check if the number of wanted seats is valid
-	if((ci->num_wanted_seats < 1) || (ci->num_wanted_seats >= MAX_CLI_SEATS)) {
-		log_error("Invalid no. of seats wanted (client #%d): %d", seq_no, ci->num_wanted_seats);
+  // if an error occurred while reading the number of seats/tickets wanted
+  if(scanf("%d", &ci->num_wanted_seats) != 1) {
+    // report it
+    log_error("Unable to read the no. of seats/tickets wanted (client #%d)", seq_no);
 
-		return INVALID_NUM_WANTED_SEATS;
-	}
-#endif
-
-	// read the list of preferences (list of seat numbers)
-	do {
-		// if an error occurred while reading the seat number
-		if(scanf("%d", &ci->preferences[++idx]) != 1) {
-			// read the input as a string (of size no larger than MAX_TOKEN_LEN characters)
-			scanf("%"QUOTE(MAX_TOKEN_LEN)"s", buf);
-
-			// break the loop if it is the terminator for the list of seat preferences
-			if (!strncmp(PREF_LIST_END, buf, plen) && (strlen(buf) == plen))
-				break;
-
-			// otherwise, print client and seat number indices, and return the error
-			log_error("Unable to read the seat number (client #%d, list element #%d)!\n", seq_no, idx+1);
-
-			return INVALID_SEAT_NUMBER;
-		}
+    return INVALID_NUM_WANTED_SEATS;
+  }
 
 #ifdef ADDITIONAL_CHECK
-		// check if the seat number is valid
-		if ((ci->preferences[idx] < 1) || (ci->preferences[idx] > MAX_ROOM_SEATS)) {
-			// if the seat number is not valid, print also its value
-			log_error(
-				"Invalid seat number [%d] (client #%d, list element #%d)",
-				ci->preferences[idx], seq_no, idx+1
-			);
+  // check if the number of wanted seats is valid
+  if((ci->num_wanted_seats < 1) || (ci->num_wanted_seats >= MAX_CLI_SEATS)) {
+    log_error("Invalid no. of seats wanted (client #%d): %d", seq_no, ci->num_wanted_seats);
 
-			return INVALID_SEAT_NUMBER;
-		}
+    return INVALID_NUM_WANTED_SEATS;
+  }
 #endif
-	}
-	while (ci->preferences[idx] >= 0);
+
+  // read the list of preferences (list of seat numbers)
+  do {
+    // if an error occurred while reading the seat number
+    if(scanf("%d", &ci->preferences[++idx]) != 1) {
+      // read the input as a string (of size no larger than MAX_TOKEN_LEN characters)
+      scanf("%"QUOTE(MAX_TOKEN_LEN)"s", buf);
+
+      // break the loop if it is the terminator for the list of seat preferences
+      if (!strncmp(PREF_LIST_END, buf, plen) && (strlen(buf) == plen))
+        break;
+
+      // otherwise, print client and seat number indices, and return the error
+      log_error("Unable to read the seat number (client #%d, list element #%d)!\n", seq_no, idx+1);
+
+      return INVALID_SEAT_NUMBER;
+    }
 
 #ifdef ADDITIONAL_CHECK
-	// check if the list of seat preferences is large enough for the number of seats/tickets requested
-	if (idx < ci->num_wanted_seats) {
-		log_error(
-			"List of seat preferences is too short (client #%d):\n"
-			"  requested %d seat(s)/ticket(s) but list has size %d", seq_no, ci->num_wanted_seats, idx
-		);
+    // check if the seat number is valid
+    if ((ci->preferences[idx] < 1) || (ci->preferences[idx] > MAX_ROOM_SEATS)) {
+      // if the seat number is not valid, print also its value
+      log_error(
+        "Invalid seat number [%d] (client #%d, list element #%d)",
+        ci->preferences[idx], seq_no, idx+1
+      );
 
-		return LIST_PREF_TOO_SHORT;
-	}
+      return INVALID_SEAT_NUMBER;
+    }
+#endif
+  }
+  while (ci->preferences[idx] >= 0);
+
+#ifdef ADDITIONAL_CHECK
+  // check if the list of seat preferences is large enough for the number of seats/tickets requested
+  if (idx < ci->num_wanted_seats) {
+    log_error(
+      "List of seat preferences is too short (client #%d):\n"
+      "  requested %d seat(s)/ticket(s) but list has size %d", seq_no, ci->num_wanted_seats, idx
+    );
+
+    return LIST_PREF_TOO_SHORT;
+  }
 #endif
 
-	// return the size of the list of preferences
-	return idx;
+  // return the size of the list of preferences
+  return idx;
 }
 
 /**
@@ -521,52 +536,56 @@ static int read_client_info(struct client_info *ci) {
  * @return pid_t The PID of the process created or -1 if fork() failed.
  */
 static pid_t create_client_process(const struct client_info *ci) {
-	char num_wanted_seats[WIDTH_SEAT+1];
-	char preferences[MAX_PREFERENCES_LEN];
-	pid_t pid;
-	int i, idx;
-	
-	// create a new process
-	switch((pid = fork())) {
-		/* failure */
-		case -1:
-			log_error("Unable to create CLIENT process");
-			
-			break;
-		
-		/* child */
-		case 0:
-			// create the argument string that holds the number of seats/tickets wanted
-			sprintf(num_wanted_seats, "%d", ci->num_wanted_seats);
+  char timeout[MAX_TOKEN_LEN];
+  char num_wanted_seats[WIDTH_SEAT+1];
+  char preferences[MAX_PREFERENCES_LEN];
+  pid_t pid;
+  int i, idx;
+  
+  // create a new process
+  switch((pid = fork())) {
+    /* failure */
+    case -1:
+      log_error("Unable to create CLIENT process");
+      
+      break;
+    
+    /* child */
+    case 0:
+      // create the argument string that holds the client timeout
+      sprintf(timeout, "%d", ci->timeout_ms);
 
-			// create the argument string that holds the list of preferences
-			for(i = 0, idx = 0; i < MAX_ROOM_SEATS && ci->preferences[i] >= 0; ++i)
-				idx += sprintf(&preferences[idx], "%d ", ci->preferences[i]);
+      // create the argument string that holds the number of seats/tickets wanted
+      sprintf(num_wanted_seats, "%d", ci->num_wanted_seats);
 
-			// replace last space of the list of preferences by the null character
-			preferences[idx-1] = '\0';
+      // create the argument string that holds the list of preferences
+      for(i = 0, idx = 0; i < MAX_ROOM_SEATS && ci->preferences[i] >= 0; ++i)
+        idx += sprintf(&preferences[idx], "%d ", ci->preferences[i]);
 
-			// execute client process
-			execlp("./client", "./client", num_wanted_seats, preferences, NULL);
+      // replace last space of the list of preferences by the null character
+      preferences[idx-1] = '\0';
 
-			//
-			// code only reaches here if execlp failed
-			//
+      // execute client process
+      execlp("./client", "./client", timeout, num_wanted_seats, preferences, NULL);
 
-			// close file (stdin has been redirected to the configuration file)
-			close(STDIN_FILENO);
+      //
+      // code only reaches here if execlp failed
+      //
 
-			// print error message
-			log_error("Unable to run client process");
+      // close file (stdin has been redirected to the configuration file)
+      close(STDIN_FILENO);
 
-			// terminate process
-			exit(CLIENT_EXEC_FAILED);
+      // print error message
+      log_error("Unable to run client process");
 
-		default: break;
-	}
+      // terminate process
+      exit(CLIENT_EXEC_FAILED);
 
-	// return the pid of the process created (or -1 if fork call failed)
-	return pid;
+    default: break;
+  }
+
+  // return the pid of the process created (or -1 if fork call failed)
+  return pid;
 }
 
 /**
@@ -583,28 +602,28 @@ static pid_t create_client_process(const struct client_info *ci) {
  * @return int The combined exit status (a binary or) of all child processes that have ended.
  */
 static int handle_zombies(int flags) {
-	// if WNOHANG is set, clears all zombies; if not, waits for all running child processes
-	int criterion = (flags & WNOHANG) ? 0 : -1;
-	pid_t pid;
-	int ret = 0, status = 0;
+  // if WNOHANG is set, clears all zombies; if not, waits for all running child processes
+  int criterion = (flags & WNOHANG) ? 0 : -1;
+  pid_t pid;
+  int ret = 0, status = 0;
 
-	// while criterion is matched or an interrupt has been raised
-	while(((pid = waitpid(-1, &status, flags)) > criterion) || errno == EINTR) {
-		// in case of an interrupt, clear errno and try again
-		if (errno == EINTR) {
-			errno = 0;
+  // while criterion is matched or an interrupt has been raised
+  while(((pid = waitpid(-1, &status, flags)) > criterion) || errno == EINTR) {
+    // in case of an interrupt, clear errno and try again
+    if (errno == EINTR) {
+      errno = 0;
 
-			continue;
-		}
+      continue;
+    }
 
-		// otherwise, print a message and combine its exit status
-		printf("%sENDED: %d (exit status = %d)%s\n", ANSI_COLOR_GREEN, pid, status, ANSI_COLOR_RESET);
+    // otherwise, print a message and combine its exit status
+    printf("%sENDED: %d (exit status = %d)%s\n", ANSI_COLOR_GREEN, pid, status, ANSI_COLOR_RESET);
 
-		ret |= status;
-	}
-	
-	// return the combined exit status
-	return ret;
+    ret |= status;
+  }
+  
+  // return the combined exit status
+  return ret;
 }
 
 /**
@@ -616,47 +635,47 @@ static int handle_zombies(int flags) {
  * @return int The combined exit status (a binary or) of all child processes that have ended.
  */
 static int main_loop() {
-	struct client_info ci;
-	int i, ret;
-	pid_t pid;
+  struct client_info ci;
+  int i, ret;
+  pid_t pid;
 
-	// read the setup for each client
-	while((ret = read_client_info(&ci)) > 0) {
-		// introduce the required delay
-		usleep(ci.delay_us);
+  // read the setup for each client
+  while((ret = read_client_info(&ci)) > 0) {
+    // introduce the required delay
+    usleep(ci.delay_us);
 
-		// run the client process with the proper configuration
-		pid = create_client_process(&ci);
+    // run the client process with the proper configuration
+    pid = create_client_process(&ci);
 
-		// if client process was not created, return failure
-		if (pid == -1)
-			return FORK_FAILED;
+    // if client process was not created, return failure
+    if (pid == -1)
+      return FORK_FAILED;
 
-		// otherwise, print its configuration, PID and PGID
-		printf(
-			"%s-------------------------------------------------------------%s\n",
-			ANSI_COLOR_YELLOW, ANSI_COLOR_RESET
-		);
+    // otherwise, print its configuration, PID and PGID
+    printf(
+      "%s-------------------------------------------------------------%s\n",
+      ANSI_COLOR_YELLOW, ANSI_COLOR_RESET
+    );
 
-		printf(
-			"CLIENT #%d (PID %d, PGID %d)\n\nDelay: %d us\n",
-			ci.seq_no, pid, getpgid(pid), ci.delay_us
-		);
-		printf("#Seats/Tickets: %d\nPreferences: ", ci.num_wanted_seats);
+    printf(
+      "CLIENT #%d (PID %d, PGID %d)\n\nDelay: %d us\nTimeout: %d ms\n",
+      ci.seq_no, pid, getpgid(pid), ci.delay_us, ci.timeout_ms
+    );
+    printf("#Seats/Tickets: %d\nPreferences: ", ci.num_wanted_seats);
 
-		// list of preferences
-		for(i = 0; (i < MAX_ROOM_SEATS) && (ci.preferences[i] >= 0); ++i)
-			printf("%d ", ci.preferences[i]);
+    // list of preferences
+    for(i = 0; (i < MAX_ROOM_SEATS) && (ci.preferences[i] >= 0); ++i)
+      printf("%d ", ci.preferences[i]);
 
-		printf(
-			"\n%s-------------------------------------------------------------%s\n",
-			ANSI_COLOR_YELLOW, ANSI_COLOR_RESET
-		);
+    printf(
+      "\n%s-------------------------------------------------------------%s\n",
+      ANSI_COLOR_YELLOW, ANSI_COLOR_RESET
+    );
 
-		// avoid any zombie processes and combine their exit status
-		ret |= handle_zombies(WNOHANG);
-	}
+    // avoid any zombie processes and combine their exit status
+    ret |= handle_zombies(WNOHANG);
+  }
 
-	// return the combined exit status
-	return (ret | handle_zombies(0));
+  // return the combined exit status
+  return (ret | handle_zombies(0));
 }

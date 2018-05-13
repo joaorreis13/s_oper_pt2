@@ -13,11 +13,11 @@ int isSeatFree(Seat *seats, int seatNum) {
 }
 
 void bookSeat(Seat *seats, int seatNum, int clientId) {
-	if (!seats)
-		return;
 	pthread_mutex_lock(&seats[seatNum].mut);
-	if (!seats[seatNum].free)
+	if (!seats || !seats[seatNum].free) {
+		pthread_mutex_unlock(&seats[seatNum].mut);
 		return;
+	}
 	seats[seatNum].free = false;
 	seats[seatNum].clientId = clientId;
 	DELAY();
