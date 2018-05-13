@@ -13,3 +13,4 @@ fifo.o
 client.o
 bilheteira.o
 server.o
+start
