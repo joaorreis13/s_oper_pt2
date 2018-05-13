@@ -6,13 +6,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define WIDTH_PID		5
-#define BUFFER_SIZE		4096
+#define WIDTH_PID 5
+#define BUFFER_SIZE 4096
 #define QUOTE(str) __QUOTE(str)
 #define __QUOTE(str) #str
 #define WIDTH_SEAT 4
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[])
+{
 	//	código do prof
 	printf("** Running process %d (PGID %d) **\n", getpid(), getpgrp());
 
@@ -23,18 +24,21 @@ int main(int argc, const char *argv[]) {
 	// código do prof termina aqui
 
 	// verificar se o número de argumentos está correcto
-	if (argc < 4) {
+	if (argc < 4)
+	{
 		printf("Usage: %s <timeout> <num_wanted_seats> <pref_seat_list>\n", *argv);
 		exit(EXIT_FAILURE);
 	}
 
 	int timeout, num_wanted_seats, *pref_seat_list = NULL;
 	// converter o primeiro argumento num inteiro;
-	if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
+	if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0)
+	{
 		printf("Invalid timeout\n");
 		exit(EXIT_FAILURE);
 	}
-	if (sscanf(argv[2], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0) {
+	if (sscanf(argv[2], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0)
+	{
 		printf("Invalid number of wanted seats\n");
 		exit(EXIT_FAILURE);
 	}
@@ -45,11 +49,14 @@ int main(int argc, const char *argv[]) {
 	// para evitar usar o realloc a cada iteração, a memória alocada cresce sempre para o dobro quando fica cheia
 	// e o tamanho final é reajustado quando o ciclo acaba.
 	int num_pref_seat = 0;
-	for (int c = 0, offset = 0, n, c_size = 0, size = strlen(argv[3]); offset < size; offset += c) {
-		if (sscanf(argv[3] + offset, "%d%n", &n, &c) < 1) {
+	for (int c = 0, offset = 0, n, c_size = 0, size = strlen(argv[3]); offset < size; offset += c)
+	{
+		if (sscanf(argv[3] + offset, "%d%n", &n, &c) < 1)
+		{
 			// formato de número inválido, ajusta o tamanho do array para apenas o necessário e sai do ciclo
 			int *tmp = realloc(pref_seat_list, num_pref_seat * sizeof(*pref_seat_list));
-			if (!tmp) {
+			if (!tmp)
+			{
 				perror("realloc");
 				break;
 			}
@@ -58,11 +65,13 @@ int main(int argc, const char *argv[]) {
 		}
 		if (n < 0)
 			continue;
-		if (num_pref_seat == c_size) {
+		if (num_pref_seat == c_size)
+		{
 			// se a memória actualmente alocada já estiver cheia, duplicar o tamanho do array
-			c_size = c_size? c_size * 2: 1;
+			c_size = c_size ? c_size * 2 : 1;
 			int *tmp = realloc(pref_seat_list, c_size * sizeof(*pref_seat_list));
-			if (!tmp) {
+			if (!tmp)
+			{
 				perror("realloc");
 				break;
 			}
@@ -73,7 +82,8 @@ int main(int argc, const char *argv[]) {
 	}
 
 	// número de preferências encontradas é menor que o número de lugares pretendidos
-	if (num_pref_seat < num_wanted_seats) {
+	if (num_pref_seat < num_wanted_seats)
+	{
 		printf("Insuficient number of seat preferences\n");
 		goto free_pref_seat_list;
 	}
@@ -87,19 +97,22 @@ int main(int argc, const char *argv[]) {
 	// cria um FIFO com o nome "/tmp/ansxxxxx", correspondente ao PID
 	char fifo_name[WIDTH_PID + 8] = "/tmp/ans";
 	sprintf(fifo_name + 8, "%0*d", WIDTH_PID, getpid());
-	if (mkfifo(fifo_name, 0666) < 0) {
+	if (mkfifo(fifo_name, 0666) < 0)
+	{
 		perror("mkfifo");
 		goto free_pref_seat_list;
-	} printf("created fifo %s\n", fifo_name);
+	}
+	printf("created fifo %s\n", fifo_name);
 
 	// abre o FIFO criado só para leitura, por onde vai receber a resposta do servidor
 	// O_NONBLOCK é especificado para a chamada ao sistema não bloquear enquanto o outro lado do FIFO não for aberto
-	int fifo = open(fifo_name, O_RDONLY|O_NONBLOCK);
-	if (fifo < 0) {
+	int fifo = open(fifo_name, O_RDONLY | O_NONBLOCK);
+	if (fifo < 0)
+	{
 		perror("fifo open");
 		goto unlink_fifo;
-	} printf("fifo opened\n");
-
+	}
+	printf("fifo opened\n");
 
 	// imprime num buffer a mensagem que vai enviar ao servidor através do FIFO requests no formato especificado pelo prof
 	char buffer[BUFFER_SIZE];
@@ -110,109 +123,109 @@ int main(int argc, const char *argv[]) {
 	buffer[n - 1] = '\n';
 	printf("buffer: %s\n", buffer);
 
+	//interpreta a mensagem do servidor (adicionar timeout)
+	char serv_answer[] = read(fifo, buffer, BUFFER_SIZE - 1);
 
-	 //interpreta a mensagem do servidor (adicionar timeout)
-    char serv_answer[] = read(fifo, buffer, BUFFER_SIZE - 1);
- 
-    size_t MAX_MESSAGE_SIZE = 20;
-    char pid[WIDTH_PID + 2];     //string with the pid
-    char clog[MAX_MESSAGE_SIZE]; //string with the whole message
- 
-    //Pid in the beginning of answer
-    sprintf(pid, "%0" QUOTE(WIDTH_PID) "d ", getpid());
-    //initialize clog with pid formated
-    //this is made to keep the array "pid" constant to use it multiple times in the sucess request branch
-    strcpy(clog, pid);
- 
-    //OPEN FILE CLOG
-    const char *clog_filename = "clog.txt";
-    FILE *clog_file = fopen(clog_filename, "a");
-    if (!clog)
-    {
-        //=====================================
-        //TODO release resources (goto)
- 
-        //=====================================
-        perror("fopen clog| NO RESOURCES FREED TODO");
-    }
-    printf("clog file created\n");
- 
-    if (serv_answer[0] == '-')
-    {
-        //Error in request
-        int error = serv_answer[1] - '0';
- 
-        switch (error)
-        {
-        case 1:
-            strcat(clog, "MAX\n");
-            break;
-        case 2:
-            strcat(clog, "NST\n");
-            break;
-        case 3:
-            strcat(clog, "IID\n");
-            break;
-        case 4:
-            strcat(clog, "ERR\n");
-            break;
-        case 5:
-            strcat(clog, "NAV\n");
-            break;
-        case 6:
-            strcat(clog, "FUL\n");
-            break;
-        default:
-		
-        }
- 
-        fprintf(clog_file, "%s", clog);
- 
-        if (fclose(clog_file) < 0)
-        {
-            perror("close clog file");
-        }
-    }
-    else
-    {
-        //Request with sucess
-        int num_Seats = 0, i;
-        sscanf(serv_answer, "%d", &num_Seats);
- 
-        for (i = 1; i <= num_Seats; i++)
-        {
-            //read the seat number
-            int seatNumber;
-            sscanf(serv_answer, "%d", &seatNumber);
- 
-            snprintf(clog, MAX_MESSAGE_SIZE, "%0" QUOTE(WIDTH_PID) "d %02d.%02d %0" QUOTE(WIDTH_SEAT) "d\n", getpid(), i, num_Seats, seatNumber);
- 
-            fprintf(clog_file, "%s", clog);
- 
-            if (fclose(clog_file) < 0)
-            {
-                perror("close clog file");
-            }
-        }
-    }
+	size_t MAX_MESSAGE_SIZE = 20;
+	char pid[WIDTH_PID + 2];	 //string with the pid
+	char clog[MAX_MESSAGE_SIZE]; //string with the whole message
+
+	//Pid in the beginning of answer
+	sprintf(pid, "%0" QUOTE(WIDTH_PID) "d ", getpid());
+	//initialize clog with pid formated
+	//this is made to keep the array "pid" constant to use it multiple times in the sucess request branch
+	strcpy(clog, pid);
+
+	//OPEN FILE CLOG
+	const char *clog_filename = "clog.txt";
+	FILE *clog_file = fopen(clog_filename, "a");
+	if (!clog)
+	{
+		//=====================================
+		//TODO release resources (goto)
+
+		//=====================================
+		perror("fopen clog| NO RESOURCES FREED TODO");
+	}
+	printf("clog file created\n");
+
+	if (serv_answer[0] == '-')
+	{
+		//Error in request
+		int error = serv_answer[1] - '0';
+
+		switch (error)
+		{
+		case 1:
+			strcat(clog, "MAX\n");
+			break;
+		case 2:
+			strcat(clog, "NST\n");
+			break;
+		case 3:
+			strcat(clog, "IID\n");
+			break;
+		case 4:
+			strcat(clog, "ERR\n");
+			break;
+		case 5:
+			strcat(clog, "NAV\n");
+			break;
+		case 6:
+			strcat(clog, "FUL\n");
+			break;
+		}
+
+		fprintf(clog_file, "%s", clog);
+
+		if (fclose(clog_file) < 0)
+		{
+			perror("close clog file");
+		}
+	}
+	else
+	{
+		//Request with sucess
+		int num_Seats = 0, i;
+		sscanf(serv_answer, "%d", &num_Seats);
+
+		for (i = 1; i <= num_Seats; i++)
+		{
+			//read the seat number
+			int seatNumber;
+			sscanf(serv_answer, "%d", &seatNumber);
+
+			snprintf(clog, MAX_MESSAGE_SIZE, "%0" QUOTE(WIDTH_PID) "d %02d.%02d %0" QUOTE(WIDTH_SEAT) "d\n", getpid(), i, num_Seats, seatNumber);
+
+			fprintf(clog_file, "%s", clog);
+
+			if (fclose(clog_file) < 0)
+			{
+				perror("close clog file");
+			}
+		}
+	}
+
+
+// abre o FIFO "/tmp/requests" para escrita
+int requests_fifo = open("/tmp/requests", O_WRONLY);
+if (requests_fifo < 0)
+{
+	perror("requests fifo open");
+	goto close_fifo;
 }
+printf("requests fifo opened\n");
 
+// escreve o conteúdo do buffer no FIFO
+if (write(requests_fifo, buffer, n) < 0)
+{
+	perror("requests fifo write");
+	goto close_requests_fifo;
+}
+printf("wrote '%*s' to requests fifo\n", n, buffer);
 
-	// abre o FIFO "/tmp/requests" para escrita
-	int requests_fifo = open("/tmp/requests", O_WRONLY);
-	if (requests_fifo < 0) {
-		perror("requests fifo open");
-		goto close_fifo;
-	} printf("requests fifo opened\n");
-
-	// escreve o conteúdo do buffer no FIFO
-	if (write(requests_fifo, buffer, n) < 0) {
-		perror("requests fifo write");
-		goto close_requests_fifo;
-	} printf("wrote '%*s' to requests fifo\n", n, buffer);
-
-	// ler do FIFO de resposta com um timeout
-	/*struct pollfd pfd = { .fd = fifo, .events = POLLIN };
+// ler do FIFO de resposta com um timeout
+/*struct pollfd pfd = { .fd = fifo, .events = POLLIN };
 	int ret = poll(&pfd, 1, 1000 * timeout);
 	switch (ret) {
 		case -1:
@@ -227,14 +240,16 @@ int main(int argc, const char *argv[]) {
 			printf("'%s'\n", buffer);
 	}*/
 
-	// leitura sem timeout
-	n = read(fifo, buffer, BUFFER_SIZE - 1);
-	if (n < 0) {
-		perror("read fifo");
-		goto close_requests_fifo;
-	} printf("read %d bytes - '%.*s' from fifo\n", n, n, buffer);
+// leitura sem timeout
+n = read(fifo, buffer, BUFFER_SIZE - 1);
+if (n < 0)
+{
+	perror("read fifo");
+	goto close_requests_fifo;
+}
+printf("read %d bytes - '%.*s' from fifo\n", n, n, buffer);
 
-	/*
+/*
 	 * Em falta:
 	 * 	Interpretar a mensagem enviada pelo servidor.
 	 * 	Escrever no ficheiro clog.txt o estado da operação. Ficheiro (FILE *) ainda não criado/aberto neste ponto
@@ -254,20 +269,16 @@ int main(int argc, const char *argv[]) {
 
 // falta adicionar o fecho dos ficheiros mencionados acima.
 
-close_requests_fifo:
-	if (close(requests_fifo) < 0)
-		perror("close requests_fifo");
+close_requests_fifo : if (close(requests_fifo) < 0)
+						  perror("close requests_fifo");
 
-close_fifo:
-	if (close(fifo) < 0)
-		perror("close fifo");
+close_fifo : if (close(fifo) < 0)
+				 perror("close fifo");
 
-unlink_fifo:
-	if (unlink(fifo_name) < 0)
-		perror("unlink fifo");
+unlink_fifo : if (unlink(fifo_name) < 0)
+				  perror("unlink fifo");
 
-free_pref_seat_list:
-	free(pref_seat_list);
+free_pref_seat_list : free(pref_seat_list);
 
-	return 0;
+return 0;
 }
