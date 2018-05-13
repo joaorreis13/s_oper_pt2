@@ -8,6 +8,9 @@
 
 #define WIDTH_PID		5
 #define BUFFER_SIZE		4096
+#define QUOTE(str) __QUOTE(str)
+#define __QUOTE(str) #str
+#define WIDTH_SEAT 4
 
 int main(int argc, const char *argv[]) {
 	//	código do prof
@@ -107,9 +110,93 @@ int main(int argc, const char *argv[]) {
 	buffer[n - 1] = '\n';
 	printf("buffer: %s\n", buffer);
 
-	//interpreta a mensagem do servidor (adicionar timeout)
-	char serv_answer[] = read(fifo, buffer, BUFFER_SIZE - 1);
-	
+
+	 //interpreta a mensagem do servidor (adicionar timeout)
+    char serv_answer[] = read(fifo, buffer, BUFFER_SIZE - 1);
+ 
+    size_t MAX_MESSAGE_SIZE = 20;
+    char pid[WIDTH_PID + 2];     //string with the pid
+    char clog[MAX_MESSAGE_SIZE]; //string with the whole message
+ 
+    //Pid in the beginning of answer
+    sprintf(pid, "%0" QUOTE(WIDTH_PID) "d ", getpid());
+    //initialize clog with pid formated
+    //this is made to keep the array "pid" constant to use it multiple times in the sucess request branch
+    strcpy(clog, pid);
+ 
+    //OPEN FILE CLOG
+    const char *clog_filename = "clog.txt";
+    FILE *clog_file = fopen(clog_filename, "a");
+    if (!clog)
+    {
+        //=====================================
+        //TODO release resources (goto)
+ 
+        //=====================================
+        perror("fopen clog| NO RESOURCES FREED TODO");
+    }
+    printf("clog file created\n");
+ 
+    if (serv_answer[0] == '-')
+    {
+        //Error in request
+        int error = serv_answer[1] - '0';
+ 
+        switch (error)
+        {
+        case 1:
+            strcat(clog, "MAX\n");
+            break;
+        case 2:
+            strcat(clog, "NST\n");
+            break;
+        case 3:
+            strcat(clog, "IID\n");
+            break;
+        case 4:
+            strcat(clog, "ERR\n");
+            break;
+        case 5:
+            strcat(clog, "NAV\n");
+            break;
+        case 6:
+            strcat(clog, "FUL\n");
+            break;
+        default:
+		
+        }
+ 
+        fprintf(clog_file, "%s", clog);
+ 
+        if (fclose(clog_file) < 0)
+        {
+            perror("close clog file");
+        }
+    }
+    else
+    {
+        //Request with sucess
+        int num_Seats = 0, i;
+        sscanf(serv_answer, "%d", &num_Seats);
+ 
+        for (i = 1; i <= num_Seats; i++)
+        {
+            //read the seat number
+            int seatNumber;
+            sscanf(serv_answer, "%d", &seatNumber);
+ 
+            snprintf(clog, MAX_MESSAGE_SIZE, "%0" QUOTE(WIDTH_PID) "d %02d.%02d %0" QUOTE(WIDTH_SEAT) "d\n", getpid(), i, num_Seats, seatNumber);
+ 
+            fprintf(clog_file, "%s", clog);
+ 
+            if (fclose(clog_file) < 0)
+            {
+                perror("close clog file");
+            }
+        }
+    }
+}
+
 
 	// abre o FIFO "/tmp/requests" para escrita
 	int requests_fifo = open("/tmp/requests", O_WRONLY);
