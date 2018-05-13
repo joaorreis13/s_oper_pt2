@@ -367,7 +367,7 @@ void *ticket_office_func(void *params) {
 		int seat_id_width = snprintf(NULL, 0, "%d", args->num_seats - 1);
 		printf("to%0*d num_cli_seats_width: %d (%d)\n", thr_id_width, args->ticket_office_id, num_cli_seats_width, MAX_CLI_SEATS);
 		printf("to%0*d seat_id_width: %d (%d)\n", thr_id_width, args->ticket_office_id, seat_id_width, args->num_seats);
-		fprintf(slog, "%d-%0*d-%0*d: ", args->ticket_office_id, WIDTH_PID, client_pid, num_cli_seats_width, num_wanted_seats);
+		fprintf(slog, "%0*d-%0*d-%0*d: ", thr_id_width, args->ticket_office_id, WIDTH_PID, client_pid, num_cli_seats_width, num_wanted_seats);
 		for (int i = 0; i < num_wanted_seats; ++i)
 			fprintf(slog, "%0*d ", seat_id_width, pref_seat_list[i]);
 		fprintf(slog, "- ");
