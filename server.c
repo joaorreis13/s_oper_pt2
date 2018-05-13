@@ -88,7 +88,7 @@ int main(int argc, const char* argv[]) {
 	} printf("Seat array created\n");
 	pthread_mutexattr_t mut_attr;
 	pthread_mutexattr_init(&mut_attr);
-	pthread_mutexattr_settype(&mut_attr, PTHREAD_MUTEX_ERRORCHECK_NP);
+	pthread_mutexattr_settype(&mut_attr, PTHREAD_MUTEX_ERRORCHECK);
 	for (int i = 0; i < num_seats; ++i) {
 		seats[i].free = true;
 		seats[i].clientId = 0;

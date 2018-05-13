@@ -97,6 +97,7 @@ int main(int argc, const char *argv[]) {
 		goto unlink_fifo;
 	} printf("fifo opened\n");
 
+
 	// imprime num buffer a mensagem que vai enviar ao servidor através do FIFO requests no formato especificado pelo prof
 	char buffer[BUFFER_SIZE];
 	int n = 0;
@@ -105,6 +106,10 @@ int main(int argc, const char *argv[]) {
 		snprintf(buffer + n, BUFFER_SIZE - n, "%d %n", pref_seat_list[i], &c);
 	buffer[n - 1] = '\n';
 	printf("buffer: %s\n", buffer);
+
+	//interpreta a mensagem do servidor (adicionar timeout)
+	char serv_answer[] = read(fifo, buffer, BUFFER_SIZE - 1);
+	
 
 	// abre o FIFO "/tmp/requests" para escrita
 	int requests_fifo = open("/tmp/requests", O_WRONLY);
