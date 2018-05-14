@@ -1,14 +1,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef struct queue {
-	size_t size;
-	size_t max_size;
-	size_t head, tail;
-	char **data;
-	pthread_mutex_t mut;
-	pthread_cond_t notFull, notEmpty;
-} queue;
+#include "queue.h"
 
 int queue_new(queue **qp, int max_size) {
 	if (!qp)
@@ -58,8 +51,10 @@ int queue_take(queue *q, char **data) {
 	return 0;
 }
 
+#include <stdio.h>
+
 void queue_free(queue *q) {
-	if (!q) {
+	if (q) {
 		free(q->data);
 		pthread_mutex_destroy(&q->mut);
 		pthread_cond_destroy(&q->notEmpty);

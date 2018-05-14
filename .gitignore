@@ -16,3 +16,4 @@ server.o
 start
 queue.o
 ticket_office.o
+.DS_Store

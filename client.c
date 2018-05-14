@@ -32,14 +32,14 @@ int main(int argc, const char *argv[]) {
 	int timeout, num_wanted_seats, *pref_seat_list = NULL;
 	// converter o primeiro argumento num inteiro;
 	if (sscanf(argv[1], "%d", &timeout) < 1 || timeout < 0) {
-		printf("Invalid timeout\n");
+		printf("cli%05d: Invalid timeout\n", getpid());
 		exit(EXIT_FAILURE);
 	}
 	if (sscanf(argv[2], "%d", &num_wanted_seats) < 1 || num_wanted_seats < 0) {
-		printf("Invalid number of wanted seats\n");
+		printf("cli%05d: Invalid number of wanted seats\n", getpid());
 		exit(EXIT_FAILURE);
 	}
-	printf("Timeout is %u\nNumber of wanted seats is %u\n", timeout, num_wanted_seats);
+	printf("cli%05d: Timeout is %u\nNumber of wanted seats is %u\n", getpid(), timeout, num_wanted_seats);
 
 	// percorrer o 3º argumento a procurar inteiros que representam o número de um lugar correspondente à
 	// preferência. Os números encontrados são guardados no array dinamicamente alocado pref_seat_list.
@@ -75,23 +75,24 @@ int main(int argc, const char *argv[]) {
 
 	// número de preferências encontradas é menor que o número de lugares pretendidos
 	if (num_pref_seat < num_wanted_seats) {
-		printf("Insuficient number of seat preferences\n");
+		printf("cli%05d: Insuficient number of seat preferences\n", getpid());
 		goto free_pref_seat_list;
 	}
 
-	printf("seat preferences: ");
+	printf("cli%05d: seat preferences: ", getpid());
 	// imprime os números das preferências encontrados
 	for (int i = 0; i < num_pref_seat; ++i)
 		printf("%d ", pref_seat_list[i]);
 	printf("\n");
 
 	// cria um FIFO com o nome "/tmp/ansxxxxx", correspondente ao PID
-	char fifo_name[WIDTH_PID + 8] = "/tmp/ans";
+	char fifo_name[WIDTH_PID + 9] = "/tmp/ans";
 	sprintf(fifo_name + 8, "%0*d", WIDTH_PID, getpid());
+	
 	if (mkfifo(fifo_name, 0666) < 0) {
 		perror("mkfifo");
 		goto free_pref_seat_list;
-	} printf("created fifo %s\n", fifo_name);
+	} printf("cli%05d: created fifo %s\n", getpid(), fifo_name);
 
 	// abre o FIFO criado só para leitura, por onde vai receber a resposta do servidor
 	// O_NONBLOCK é especificado para a chamada ao sistema não bloquear enquanto o outro lado do FIFO não for aberto
@@ -99,7 +100,7 @@ int main(int argc, const char *argv[]) {
 	if (fifo < 0) {
 		perror("fifo open");
 		goto unlink_fifo;
-	} printf("fifo opened\n");
+	} printf("cli%05d: fifo opened\n", getpid());
 
 	// imprime num buffer a mensagem que vai enviar ao servidor através do FIFO requests no formato especificado pelo prof
 	char buffer[BUFFER_SIZE];
@@ -108,20 +109,30 @@ int main(int argc, const char *argv[]) {
 	for (int i = 0, c; i < num_pref_seat; ++i, n += c)
 		snprintf(buffer + n, BUFFER_SIZE - n, "%d %n", pref_seat_list[i], &c);
 	buffer[n - 1] = '\n';
-	printf("buffer: %s\n", buffer);
+	printf("cli%05d: buffer: %s\n", getpid(), buffer);
 
 	// abre o FIFO "/tmp/requests" para escrita
 	int requests_fifo = open("/tmp/requests", O_WRONLY);
 	if (requests_fifo < 0) {
 		perror("requests fifo open");
 		goto close_fifo;
-	} printf("requests fifo opened\n");
+	} printf("cli%05d: requests fifo opened\n", getpid());
 
 	// escreve o conteúdo do buffer no FIFO
 	if (write(requests_fifo, buffer, n) < 0) {
 		perror("requests fifo write");
 		goto close_requests_fifo;
-	} printf("wrote '%*s' to requests fifo\n", n, buffer);
+	} printf("cli%05d: wrote msg to requests fifo:\n%*s\n", getpid(), n, buffer);
+
+	const char *error_codes[] = { "", "MAX", "NST", "IID", "ERR", "NAV", "FUL", "OUT" };
+	const char *clog_name = "clog.txt";
+	const char *cbook_name = "cbook.txt";
+	FILE *clog = fopen(clog_name, "a");
+	FILE *cbook = fopen(cbook_name, "a");
+	if (!clog || !cbook) {
+		perror("fopen");
+		goto close_requests_fifo;
+	}
 
 	// ler do FIFO de resposta com timeout
 	fd_set fds;
@@ -135,7 +146,7 @@ int main(int argc, const char *argv[]) {
 			goto close_requests_fifo;
 		}
 		else {
-			printf("Server response timed out. Exiting.\n");
+			printf("cli%05d: Server response timed out\n", getpid());
 			ret = -7; // OUT in error_codes
 			goto print_clog;
 		}
@@ -158,17 +169,16 @@ int main(int argc, const char *argv[]) {
 		goto close_requests_fifo;
 	}
 
-	printf("received response: %d'%.*s'\n", n, n, buffer);
+	printf("cli%05d: received response: %d-%.*s\n", getpid(), n, n, buffer);
 
 	int offset;
 	sscanf(buffer, "%d %n", &ret, &offset);
-	const char *error_codes[] = { "", "MAX", "NST", "IID", "ERR", "NAV", "FUL", "OUT" };
 	if (ret < 0) {
-		printf("Server unable to book wanted seats. Error code: %s\n", error_codes[-ret]);
+		printf("cli%05d: Server unable to book wanted seats. Error code: %s\n", getpid(), error_codes[-ret]);
 		goto print_clog;
 	}
 	if (ret != getpid()) {
-		printf("Unexpected parameter: received PID does not match this processes'.\n");
+		printf("cli%05d: Unexpected parameter: received PID does not match this processes'.\n", getpid());
 		goto close_requests_fifo;
 	}
 
@@ -178,7 +188,7 @@ int main(int argc, const char *argv[]) {
 		goto close_requests_fifo;
 	}
 	offset += ret;
-	printf("Allocated seats:\n%s\n\n", buffer + offset);
+	printf("cli%05d: Allocated seats:\n%s\n\n", getpid(), buffer + offset);
 	int *allocated_seats = malloc(num_allocated_seats * sizeof(*allocated_seats));
 	if (!allocated_seats) {
 		perror("malloc allocated seats");
@@ -190,15 +200,6 @@ int main(int argc, const char *argv[]) {
 			fprintf(stderr, "Unable to parse allocated seats numbers\n");
 			goto free_allocated_seats;
 		}
-
-	const char *clog_name = "clog.txt";
-	const char *cbook_name = "cbook.txt";
-	FILE *clog = fopen(clog_name, "w");
-	FILE *cbook = fopen(cbook_name, "w");
-	if (!clog || !cbook) {
-		perror("fopen");
-		goto free_allocated_seats;
-	}
 
 	const char *shm_clog_mut_name = "/clog_mut";
 	const char *shm_cbook_mut_name = "/cbook_mut";
@@ -233,51 +234,52 @@ int main(int argc, const char *argv[]) {
 		pthread_mutex_init(cbook_shmut, &shmut_attr);
 
 print_clog:
-	for (int i = 0; i < num_allocated_seats; ++i) {
+	if (ret < 0) {
 		if (clog_use_mut)
 			pthread_mutex_lock(clog_shmut);
-		if (ret < 0)
-			fprintf(clog, "%0*d %s\n", WIDTH_PID, getpid(), error_codes[-ret]);
-		else {
-			fprintf(clog, "%0*d ", WIDTH_PID, getpid());
-			for (int i = 0; i < num_allocated_seats; ++i)
-				fprintf(clog, "%02d.%02d ", allocated_seats[i], num_allocated_seats);
-			fprintf(clog, "\n");
-		}
+		fprintf(clog, "%0*d %s\n", WIDTH_PID, getpid(), error_codes[-ret]);
 		if (clog_use_mut)
 			pthread_mutex_unlock(clog_shmut);
 	}
+	else {
+		if (clog_use_mut)
+			pthread_mutex_lock(clog_shmut);
+		fprintf(clog, "%0*d ", WIDTH_PID, getpid());
+		for (int i = 0; i < num_allocated_seats; ++i)
+			fprintf(clog, "%02d.%02d ", allocated_seats[i], num_allocated_seats);
+		fprintf(clog, "\n");
+		if (clog_use_mut)
+			pthread_mutex_unlock(clog_shmut);
 
-	for (int i = 0; i < num_allocated_seats; ++i) {
-		if (cbook_use_mut)
-			pthread_mutex_lock(cbook_shmut);
-		fprintf(cbook, "%0*d\n", WIDTH_SEAT, allocated_seats[i]);
-		if (cbook_use_mut)
-			pthread_mutex_unlock(cbook_shmut);
+		for (int i = 0; i < num_allocated_seats; ++i) {
+			if (cbook_use_mut)
+				pthread_mutex_lock(cbook_shmut);
+			fprintf(cbook, "%0*d\n", WIDTH_SEAT, allocated_seats[i]);
+			if (cbook_use_mut)
+				pthread_mutex_unlock(cbook_shmut);
+		}
 	}
 
 	if (clog_use_mut) {
 		pthread_mutex_destroy(clog_shmut);
 		munmap(clog_shmut, sizeof(*clog_shmut));
+		shm_unlink(shm_clog_mut_name);
 	}
 	if (cbook_use_mut) {
 		pthread_mutex_destroy(cbook_shmut);
 		munmap(cbook_shmut, sizeof(*cbook_shmut));
+		shm_unlink(shm_cbook_mut_name);
 	}
 	pthread_mutexattr_destroy(&shmut_attr);
-	shm_unlink(shm_clog_mut_name);
-	shm_unlink(shm_cbook_mut_name);
 
 // cleanup de todos os recursos criados na execução do programa.
 // estão pela ordem inversa à usada para a sua criação; assim, através do goto
 // é possível saltar para o ponto necessário e todas as instruções seguintes serão executadas normalmente,
 // tornando a operação mais simples.
 
-close_cbook:
 	if (fclose(cbook) < 0)
 		perror("fclose cbook");
 
-close_clog:
 	if (fclose(clog) < 0)
 		perror("fclose clog");
 
