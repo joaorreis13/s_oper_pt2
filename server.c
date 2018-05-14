@@ -8,7 +8,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#include <poll.h>
 
 #include "queue.h"
 #include "ticket_office.h"
@@ -25,8 +24,7 @@
 
 // parâmetros necessários para a execução de cada thread
 struct ticket_office_thr_params {
-	int ticket_office_id;
-	int num_seats;
+	int ticket_office_id, num_seats;
 	FILE *slog;
 	Seat *seats;
 	queue *requests_buffer;
@@ -150,7 +148,7 @@ int main(int argc, const char* argv[]) {
 	FD_ZERO(&fds);
 	FD_SET(fifo_fd, &fds);
 	struct timeval tv = { .tv_sec = open_time, .tv_usec = 0 };
-	while (tv.tv_sec) {
+	while (tv.tv_sec || tv.tv_usec) {
 		int ret = select(fifo_fd + 1, &fds, NULL, NULL, &tv);
 		if (ret < 1) {
 			if (ret < 0)
@@ -172,12 +170,11 @@ int main(int argc, const char* argv[]) {
 				break;
 			}
 			if (!n) {
-				fprintf(stderr, "write end of requests fifo closed\n");
+				fprintf(stderr, "write end of fifo was closed\n");
 				free(buffer);
 				break;
 			}
 			buffer[n] = 0;
-			// memory shared between threads must be dinamically allocated...
 			printf("queue_put returned %d. put %d-%.*s\n", queue_put(requests_buffer, buffer), n, n, buffer);
 		}
 		else {
@@ -185,9 +182,6 @@ int main(int argc, const char* argv[]) {
 			break;
 		}
 	}
-
-	// O timeout deve ser implementado neste thread (main thread),
-	// que sinalizará todos os outros aquando do seu término por forma a estes terminarem a sua execução: por implementar
 
 	// sinaliza todos os threads que estes devem terminar as operações correntes, libertar os seus recursos e terminar a execução
 	for (int i = 0; i < num_ticket_offices; ++i)
@@ -393,15 +387,11 @@ void *ticket_office_func(void *params) {
 		fprintf(slog, "\n");
 
 		if (!exit_code) {
-			// use cleaner write instead of fprintf to ensure atomic writes to file
-			fprintf(fifo, "%d ", num_allocated_seats);
+			fprintf(fifo, "%d %d ", client_pid, num_allocated_seats);
 			for (int i = 0; i < num_allocated_seats; ++i)
 				fprintf(fifo, "%d ", allocated_seats[i]);
 			fprintf(fifo, "\n");
 		}
-		else
-			fprintf(fifo, "%d\n", exit_code);
-
 
 		free(allocated_seats);
 

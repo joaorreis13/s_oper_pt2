@@ -152,7 +152,6 @@ int main(int argc, const char *argv[]) {
 		}
 	}
 	if (FD_ISSET(fifo, &fds)) {
-		char buffer[BUFFER_SIZE];
 		int n = read(fifo, buffer, BUFFER_SIZE - 1);
 		if (n < 0) {
 			perror("read fifo");
@@ -163,13 +162,12 @@ int main(int argc, const char *argv[]) {
 			goto close_requests_fifo;
 		}
 		buffer[n] = 0;
+		printf("cli%05d: received response: %.*s\n", getpid(), n, buffer);
 	}
 	else {
 		fprintf(stderr, "Unknown error in select\n");
 		goto close_requests_fifo;
 	}
-
-	printf("cli%05d: received response: %d-%.*s\n", getpid(), n, n, buffer);
 
 	int offset;
 	sscanf(buffer, "%d %n", &ret, &offset);

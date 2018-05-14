@@ -51,8 +51,6 @@ int queue_take(queue *q, char **data) {
 	return 0;
 }
 
-#include <stdio.h>
-
 void queue_free(queue *q) {
 	if (q) {
 		free(q->data);

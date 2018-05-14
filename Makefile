@@ -1,27 +1,25 @@
-CC = clang
+CC = gcc
 CFLAGS = -Wall -Wextra -g
-DEBUG_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer
+EXE_DIR_NAME = T2G05
 
-all: start client server
+all: client server
 
 start: start.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 client: client.c
-	$(CC) $(CFLAGS) -pthread $^ -o $@ -lrt
+	-mkdir -p $(EXE_DIR_NAME)
+	$(CC) $(CFLAGS) -pthread $^ -o $(EXE_DIR_NAME)/$@ -lrt
 
 server: server.c queue.o ticket_office.o
-	$(CC) $(CFLAGS) -pthread $^ -o $@
-
-debug: CFLAGS += $(DEBUG_FLAGS)
-debug: start client server
+	-mkdir -p $(EXE_DIR_NAME)
+	$(CC) $(CFLAGS) -pthread $^ -o $(EXE_DIR_NAME)/$@
 
 %.o : %.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
 clean:
-	-rm -f *.o client server start
-	make clean_logs
+	-rm -f *.o $(EXE_DIR_NAME)/client $(EXE_DIR_NAME)/server
 
 clean_logs:
-	-rm -f *log.txt *book.txt
+	-rm -f $(EXE_DIR_NAME)/*log.txt $(EXE_DIR_NAME)/*book.txt
